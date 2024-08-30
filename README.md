@@ -2,9 +2,13 @@
 
 This is a simple Flask web application that allows users to look up a part name by entering its serial number. The application connects to a SQL Server database to retrieve the part name associated with the provided serial number.
 
+## ScreenShot
+
+
+
 ## Requirements
 
-- Python 3.x
+- Python 
 - Flask
 - pyodbc
 
