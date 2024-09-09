@@ -4,7 +4,7 @@ import pyodbc
 app = Flask(__name__)
 
 # Your database connection string
-connection_string = 'DRIVER={SQL Server};SERVER=DESKTOP-AKL5BJR;DATABASE=Incoming2818;Trusted_Connection=yes;'
+connection_string = ''
 
 # Route to handle the web page
 @app.route('/', methods=['GET', 'POST'])
