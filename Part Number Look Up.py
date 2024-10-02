@@ -1,33 +1,65 @@
+import pandas as pd
 from flask import Flask, request, render_template_string
-import pyodbc
+from flask_sqlalchemy import SQLAlchemy
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
-# Your database connection string
-connection_string = ''
+# Database configuration
+app.config['SQLALCHEMY_DATABASE_URI'] = ''
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Route to handle the web page
+db = SQLAlchemy(app)
+
+class ReceivingLog(db.Model):
+    __tablename__ = 'receiving_log'
+    serial_number = db.Column(db.String(255), primary_key=True)
+    entry_date = db.Column(db.Date)
+    invoice_number = db.Column(db.String(255))
+    box_number = db.Column(db.String(255))
+    pod_number = db.Column(db.String(255))
+    part_number = db.Column(db.String(255))
+    quantity = db.Column(db.Float)
+
+def load_data():
+    file_path1 = r"C:\Users\Admin\OneDrive\Desktop\Incoming\Receiving Log_July_2024.xlsm"
+    file_path2 = r"C:\Users\Admin\OneDrive\Desktop\Incoming\Receiving Log.xlsx"
+    
+    data1 = pd.read_excel(file_path1)
+    data2 = pd.read_excel(file_path2)
+    data = pd.concat([data1, data2], ignore_index=True)
+    data['QTY'] = data['QTY'].fillna(1)
+
+    data.rename(columns={
+    'Date': 'entry_date',  
+    'Inv# ': 'invoice_number',
+    'Box #': 'box_number',
+    'POD#': 'pod_number',
+    'Part#': 'part_number',
+    'SN#': 'serial_number',
+    'QTY': 'quantity'
+}, inplace=True)
+
+
+    # Insert the data into the PostgreSQL table
+    data.to_sql('receiving_log', db.engine, if_exists='replace', index=False)
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    serial_number = ""  # Default empty value for serial number
-    part_name = ""  # Default empty value for part name
-    message = ""
-    found = False  # Flag to check if the part is found
-    if request.method == 'POST':
-        serial_number = request.form['serial_number']
-        # Connect to the database
-        with pyodbc.connect(connection_string) as conn:
-            cursor = conn.cursor()
-            # Query to fetch the part name using the serial number
-            cursor.execute("SELECT Part# FROM [dbo].[Incoming] WHERE SN# = ?", (serial_number,))
-            result = cursor.fetchone()
-            if result:
-                part_name = result[0]
-                found = True
-            else:
-                message = "No part found with that serial number."
+    serial_number = request.form.get('serial_number', '')
+    found_entry = ReceivingLog.query.filter_by(serial_number=serial_number).first()
+    if found_entry:
+        part_name = found_entry.part_number
+        message = "Part Found!"
+        found = True
+    else:
+        part_name = ""
+        message = "No part found with that serial number."
+        found = False
 
-    # HTML form for input, now using Bootstrap for styling
     html = '''
     <!DOCTYPE html>
     <html>
@@ -61,6 +93,9 @@ def index():
     return render_template_string(html, serial_number=serial_number, part_name=part_name, found=found, message=message)
 
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()  
+        load_data()  
     app.run(host='0.0.0.0', port=5000)
 
 
