@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Serial Number Lookup</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f9f9f9; }
+        .header-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            position: relative;
+        }
+        .refresh-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+        }
+        .header-text {
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            font-size: 36px;
+            font-weight: bold;
+            color: #2c3e50;
+            text-shadow: 2px 2px 4px #aaa;
+        }
+        .card {
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .table-responsive {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-container">
+            <div class="header-text">🔍 Serial Number Lookup</div>
+            <button class="btn btn-sm btn-outline-primary refresh-btn" onclick="refreshData()" id="refreshBtn">
+                🔄 Refresh DB
+            </button>
+        </div>
+
+        {% if refresh_status %}
+        <div class="alert alert-{{ 'success' if refresh_status == 'success' else 'danger' }} alert-dismissible fade show">
+            {{ refresh_message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        <!-- Part Name Lookup -->
+        <div class="card">
+            <div class="card-header bg-primary text-white">Part Name Lookup</div>
+            <div class="card-body">
+                <form method="post">
+                    <input type="text" class="form-control mb-2" name="serial_number" placeholder="Enter Serial Number (e.g. YCA123...)" value="{{ serial_number }}">
+                    <button type="submit" class="btn btn-primary">Lookup</button>
+                </form>
+                {% if serial_number %}
+                    {% if found %}
+                    <div class="alert alert-success mt-3">
+                        Serial: <strong>{{ serial_number }}</strong><br>
+                        Part: <strong>{{ part_name }}</strong><br>
+                        Entry Date: <strong>{{ entry_date }}</strong>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning mt-3">{{ message }}</div>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Used History Lookup -->
+        <div class="card">
+            <div class="card-header bg-info text-white">Used History Lookup</div>
+            <div class="card-body">
+                <form method="post">
+                    <input type="text" class="form-control mb-2" name="word_serial_query" placeholder="Enter Serial Number" value="{{ word_serial_query }}">
+                    <button type="submit" class="btn btn-info">Search</button>
+                </form>
+                {% if word_serial_results %}
+                <ul class="mt-3">
+                    {% for r in word_serial_results %}
+                    <li>{{ r.file_name }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Prune Serial Numbers -->
+        <div class="card">
+            <div class="card-header bg-secondary text-white">Prune Serial Numbers</div>
+            <div class="card-body">
+                <form method="post">
+                    <textarea name="prune_input" class="form-control mb-2" rows="4" placeholder="Paste serial numbers separated by new lines or commas">{{ prune_input }}</textarea>
+                    <button type="submit" class="btn btn-secondary">Prune</button>
+                </form>
+                {% if pruned_serials_text %}
+                <div class="alert alert-success mt-2">
+                    <strong>Pruned Serial Numbers:</strong><br>
+                    <pre>{{ pruned_serials_text }}</pre>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Upload and Validate Word File -->
+        <div class="card">
+            <div class="card-header bg-warning">Upload Word File to Validate</div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    <input type="file" name="word_file" accept=".docx" class="form-control mb-2">
+                    <button type="submit" class="btn btn-warning">Validate</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Validation Results Table -->
+        {% if match_results %}
+        <div class="card">
+            <div class="card-header bg-success text-white">Validation Results</div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Serial Number</th>
+                                <th>Word Part</th>
+                                <th>DB Part</th>
+                                <th>Status</th>
+                                <th>Qty Check</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in match_results %}
+                            <tr>
+                                <td>{{ r.serial_number }}</td>
+                                <td>{{ r.word_part }}</td>
+                                <td>{{ r.db_part or 'N/A' }}</td>
+                                <td>{{ r.status }}</td>
+                                <td>{{ r.qty_check }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        async function refreshData() {
+            const btn = document.getElementById('refreshBtn');
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Refreshing...';
+            try {
+                const response = await fetch('/refresh-data', { method: 'POST' });
+                const result = await response.json();
+                const params = new URLSearchParams({
+                    refresh_status: result.status,
+                    refresh_message: result.message || result.error
+                });
+                window.location.href = '/?' + params.toString();
+            } catch (error) {
+                btn.innerHTML = '❌ Error';
+                setTimeout(() => {
+                    btn.innerHTML = '🔄 Refresh DB';
+                    btn.disabled = false;
+                }, 3000);
+            }
+        }
+    </script>
+</body>
+</html>
