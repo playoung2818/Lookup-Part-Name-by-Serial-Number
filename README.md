@@ -18,18 +18,19 @@ This is a Flask-based web application that allows users to:
 
 ## 🏗️ Project Structure
 
-receiving_log_app/
-├── app.py                 # Main entry point
-├── config.py              # DB and logging settings
-├── templates/
-│   └── index.html         # Frontend UI
-├── models/
-│   └── models.py          # SQLAlchemy models
-├── routes/
-│   ├── index_routes.py    # Main routes
-│   └── api_routes.py      # API endpoints
-├── functions/
-│   ├── data_loader.py     # Loads Google Sheet to DB
-│   ├── utils.py           # Helpers like SN extractor
-│   └── validation.py      # Word file matching logic
+receiving_log_app/  
+├── app.py               # Main entry point  
+├── config.py            # DB and logging settings  
+├── templates/  
+│   └── index.html       # Frontend UI  
+├── models/  
+│   └── models.py        # SQLAlchemy models  
+├── routes/  
+│   ├── index_routes.py  # Main routes  
+│   └── api_routes.py    # API endpoints  
+├── functions/  
+│   ├── data_loader.py   # Loads Google Sheet to DB  
+│   ├── utils.py         # Helpers like SN extractor  
+│   └── validation.py    # Word file matching logic  
+
 
