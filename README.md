@@ -1,5 +1,7 @@
 # 🔍 Lookup Part Name by Serial Number
 
+https://github.com/playoung2818/Lookup-Part-Name-by-Serial-Number/blob/main/Animation.gif
+
 This is a Flask-based web application that allows users to:
 - Look up part names by serial numbers
 - Prune multiple serial numbers from raw text
