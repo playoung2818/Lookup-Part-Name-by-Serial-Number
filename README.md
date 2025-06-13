@@ -6,7 +6,9 @@ This is a Flask-based web application that allows users to:
 - Look up part names by serial numbers
 - Prune multiple serial numbers from raw text
 - Sync receiving log data from a Google Sheet to a PostgreSQL database
-- 
+
+---
+
 ![Animation](https://github.com/user-attachments/assets/639a5ecf-670b-4952-8bad-09c2a29fa427)
 
 ---
