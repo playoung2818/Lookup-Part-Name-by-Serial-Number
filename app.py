@@ -88,7 +88,7 @@ def index():
                 try:
                     with NamedTemporaryFile(delete=False, suffix='.docx') as tmp:
                         uploaded_file.save(tmp.name)
-                        match_results = validate_sn_part_matches_via_api(tmp.name)
+                        match_results = validate_sn_part_matches_via_api(tmp.name, db.session)
                         os.unlink(tmp.name)
                 except Exception as e:
                     logging.error(f"Word file processing error: {e}")
