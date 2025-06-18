@@ -7,7 +7,7 @@ import re
 import logging
 
 from functions.utils import extract_useful_number
-from functions.validation import validate_sn_part_matches_via_api
+from functions.Validation import validate_sn_part_matches_via_api 
 
 index_bp = Blueprint('index', __name__)
 
