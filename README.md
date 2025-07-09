@@ -25,19 +25,24 @@ This is a Flask-based web application that allows users to:
 
 ## 🏗️ Project Structure
 
-receiving_log_app/  
-├── app.py               # Main entry point  
-├── config.py            # DB and logging settings  
-├── templates/  
-│   └── index.html       # Frontend UI  
-├── models/  
-│   └── models.py        # SQLAlchemy models  
-├── routes/  
-│   ├── index_routes.py  # Main routes  
-│   └── api_routes.py    # API endpoints  
-├── functions/  
-│   ├── data_loader.py   # Loads Google Sheet to DB  
-│   ├── utils.py         # Helpers like SN extractor  
-│   └── validation.py    # Word file matching logic  
+receiving_log_app/
+├── app/                        # Application package
+│   ├── __init__.py             # App factory setup
+│   ├── config.py               # Configurations (DB, logging, etc.)
+│   ├── models/                 # SQLAlchemy models
+│   │   └── models.py
+│   ├── routes/                 # Route handlers
+│   │   ├── index_routes.py
+│   │   └── api_routes.py
+│   ├── services/               # Core logic (business logic layer)
+│   │   ├── data_loader.py      # Data loading from Google Sheets / Excel
+│   │   ├── utils.py            # Helper functions
+│   │   └── validation.py       # Validation and matching logic
+│   └── templates/              # Frontend HTML templates
+│       └── index.html
+├── app.py                      # App runner (can use create_app pattern)
+├── requirements.txt            # Python dependencies
+├── README.md                   # Project documentation
+
 
 
