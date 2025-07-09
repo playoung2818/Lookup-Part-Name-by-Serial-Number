@@ -23,7 +23,6 @@ This is a Flask-based web application that allows users to:
 
 ---
 
-## 🏗️ Project Structure
 
 ## 🏗️ Project Structure
 
