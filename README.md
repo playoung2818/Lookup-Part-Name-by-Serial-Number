@@ -25,24 +25,23 @@ This is a Flask-based web application that allows users to:
 
 ## 🏗️ Project Structure
 
-receiving_log_app/
-├── app/                        # Application package
-│   ├── __init__.py             # App factory setup
-│   ├── config.py               # Configurations (DB, logging, etc.)
-│   ├── models/                 # SQLAlchemy models
-│   │   └── models.py
-│   ├── routes/                 # Route handlers
-│   │   ├── index_routes.py
-│   │   └── api_routes.py
-│   ├── services/               # Core logic (business logic layer)
-│   │   ├── data_loader.py      # Data loading from Google Sheets / Excel
-│   │   ├── utils.py            # Helper functions
-│   │   └── validation.py       # Validation and matching logic
-│   └── templates/              # Frontend HTML templates
-│       └── index.html
-├── app.py                      # App runner (can use create_app pattern)
-├── requirements.txt            # Python dependencies
-├── README.md                   # Project documentation
+## 🏗️ Project Structure
+
+- `receiving_log_app/`
+  - `app/` – Application package  
+    - `__init__.py` – App factory setup  
+    - `config.py` – Configuration (DB, logging, etc.)  
+    - `models/models.py` – SQLAlchemy models  
+    - `routes/index_routes.py` – Main UI routes  
+    - `routes/api_routes.py` – API endpoints  
+    - `services/data_loader.py` – Loads data from Google Sheets / Excel  
+    - `services/utils.py` – Helper functions (e.g., SN extractor)  
+    - `services/validation.py` – Matching logic for part usage history  
+    - `templates/index.html` – Frontend template  
+  - `app.py` – Entry point using `create_app()`  
+  - `requirements.txt` – Python dependencies  
+  - `README.md` – Project documentation
+
 
 
 
