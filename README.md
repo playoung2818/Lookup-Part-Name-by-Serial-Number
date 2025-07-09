@@ -4,8 +4,9 @@
 
 This is a Flask-based web application that allows users to:
 - Look up part names by serial numbers
+- Retrieve part usage history
 - Prune multiple serial numbers from raw text
-- Sync receiving log data from a Google Sheet to a PostgreSQL database
+- Sync receiving log data from a Excel Sheet to a PostgreSQL database
 
 ---
 
@@ -17,7 +18,7 @@ This is a Flask-based web application that allows users to:
 
 - **Serial Number Lookup:** Search for parts by entering serial numbers
 - **Batch Pruning:** Clean and extract useful serial numbers from messy input
-- **Google Sheet Sync:** Automatically loads data from a shared Google Sheet
+- **Excel Sheet Sync:** Automatically loads data from an Excel Sheet
 - **Word File Validation:** Upload `.docx` files to validate SN-part mappings via internal API
 
 ---
