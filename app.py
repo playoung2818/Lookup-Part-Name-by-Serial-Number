@@ -29,7 +29,7 @@ def create_app():
     # initialize SQLAlchemy
     db.init_app(app)
 
-    # register your modular routes
+    # register modular routes
     app.register_blueprint(index_bp)
     app.register_blueprint(api_bp, url_prefix="/api")
 
