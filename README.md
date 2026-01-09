@@ -32,8 +32,7 @@ This is a Flask-based web application that allows users to:
     - `config.py` – Configuration (DB, logging, etc.)  
     - `models/models.py` – SQLAlchemy models  
     - `routes/index_routes.py` – Main UI routes  
-    - `routes/api_routes.py` – API endpoints  
-    - `services/data_loader.py` – Loads data from Google Sheets / Excel  
+    - `routes/api_routes.py` – API endpoints   
     - `services/utils.py` – Helper functions (e.g., SN extractor)  
     - `services/validation.py` – Matching logic for part usage history  
     - `templates/index.html` – Frontend template  
