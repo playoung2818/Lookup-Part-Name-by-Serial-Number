@@ -1,4 +1,5 @@
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, abort, send_file
+import json
 from models.models import ReceivingLog
 from sqlalchemy.sql import text
 from tempfile import NamedTemporaryFile
@@ -8,6 +9,10 @@ import logging
 
 from functions.utils import extract_useful_number
 from functions.Validation import validate_sn_part_matches_via_api 
+try:
+    from docx import Document
+except Exception:
+    Document = None
 
 index_bp = Blueprint('index', __name__)
 
@@ -61,10 +66,38 @@ def index():
             word_serial_query = request.form.get('word_serial_query', '').strip()
             if word_serial_query:
                 try:
-                    word_serial_results = ReceivingLog.query.session.execute(
-                        text("SELECT * FROM word_file_log WHERE product_details::text ILIKE :query"),
-                        {"query": f"%{word_serial_query}%"}
-                    ).fetchall()
+                    rows = ReceivingLog.query.session.execute(
+                        text("SELECT * FROM word_file_log")
+                    ).mappings().all()
+
+                    def row_has_exact_serial(row, serial):
+                        product_details = row.get("product_details")
+                        if product_details is None:
+                            return False
+                        if isinstance(product_details, str):
+                            try:
+                                product_details = json.loads(product_details)
+                            except Exception:
+                                return False
+                        if isinstance(product_details, dict):
+                            product_details = [product_details]
+                        if not isinstance(product_details, list):
+                            return False
+
+                        for item in product_details:
+                            if not isinstance(item, dict):
+                                continue
+                            sn_field = item.get("sn")
+                            if not sn_field:
+                                continue
+                            serials = [s.strip() for s in str(sn_field).splitlines() if s.strip()]
+                            if serial in serials:
+                                return True
+                        return False
+
+                    word_serial_results = [
+                        row for row in rows if row_has_exact_serial(row, word_serial_query)
+                    ]
                 except Exception as e:
                     logging.error(f"Error querying word_file_log: {e}")
                     word_serial_results = []
@@ -94,3 +127,53 @@ def index():
                            match_results=match_results,
                            refresh_status=refresh_status,
                            refresh_message=refresh_message)
+
+@index_bp.route('/word-preview', methods=['GET'])
+def word_preview():
+    file_path = request.args.get('file_path', '').strip()
+    if not file_path:
+        abort(400)
+    if not file_path.lower().endswith('.docx'):
+        abort(400)
+    if not os.path.isfile(file_path):
+        abort(404)
+
+    if Document is None:
+        return render_template(
+            'word_preview.html',
+            file_path=file_path,
+            content="",
+            error="python-docx is not installed. Run: pip install python-docx"
+        )
+
+    try:
+        doc = Document(file_path)
+        paragraphs = [p.text for p in doc.paragraphs if p.text]
+        content = "\n".join(paragraphs)
+        if not content:
+            content = "(No text found in this document.)"
+        return render_template(
+            'word_preview.html',
+            file_path=file_path,
+            content=content,
+            error=""
+        )
+    except Exception as e:
+        logging.error(f"Error reading word file {file_path}: {e}")
+        return render_template(
+            'word_preview.html',
+            file_path=file_path,
+            content="",
+            error="Failed to read the Word file."
+        )
+
+@index_bp.route('/word-download', methods=['GET'])
+def word_download():
+    file_path = request.args.get('file_path', '').strip()
+    if not file_path:
+        abort(400)
+    if not file_path.lower().endswith('.docx'):
+        abort(400)
+    if not os.path.isfile(file_path):
+        abort(404)
+    return send_file(file_path, as_attachment=True)
