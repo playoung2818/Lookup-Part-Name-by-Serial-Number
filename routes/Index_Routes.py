@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, jsonify, abort, send_file
 import json
+import glob
 from models.models import ReceivingLog
 from sqlalchemy.sql import text
 from tempfile import NamedTemporaryFile
@@ -15,12 +16,15 @@ except Exception:
     Document = None
 
 index_bp = Blueprint('index', __name__)
+INVOICE_DIR = r"C:\Users\Admin\OneDrive - neousys-tech\Desktop\Invoice"
 
 @index_bp.route('/', methods=['GET', 'POST'])
 def index():
     serial_number = ""
     part_name = ""
     entry_date = ""
+    invoice_number = ""
+    pod_number = ""
     found = False
     message = ""
     prune_input = ""
@@ -41,6 +45,8 @@ def index():
                     if found_entry:
                         part_name = found_entry.part_number
                         entry_date = found_entry.entry_date.strftime('%m-%d-%Y') if found_entry.entry_date else ""
+                        invoice_number = found_entry.invoice_number or ""
+                        pod_number = found_entry.pod_number or ""
                         message = "Part Found!"
                         found = True
                     else:
@@ -118,6 +124,8 @@ def index():
                            serial_number=serial_number,
                            part_name=part_name,
                            entry_date=entry_date,
+                           invoice_number=invoice_number,
+                           pod_number=pod_number,
                            found=found,
                            message=message,
                            prune_input=prune_input,
@@ -177,3 +185,16 @@ def word_download():
     if not os.path.isfile(file_path):
         abort(404)
     return send_file(file_path, as_attachment=True)
+
+@index_bp.route('/invoice-download', methods=['GET'])
+def invoice_download():
+    invoice_number = request.args.get('invoice_number', '').strip()
+    if not invoice_number:
+        abort(400)
+
+    pattern = os.path.join(INVOICE_DIR, f"*{invoice_number}*")
+    matches = [p for p in glob.glob(pattern) if os.path.isfile(p)]
+    if not matches:
+        abort(404)
+
+    return send_file(matches[0], as_attachment=False)

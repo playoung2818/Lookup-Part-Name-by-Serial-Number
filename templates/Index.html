@@ -53,7 +53,16 @@
                     <div class="alert alert-success mt-3">
                         Serial: <strong>{{ serial_number }}</strong><br>
                         Part: <strong>{{ part_name }}</strong><br>
-                        Entry Date: <strong>{{ entry_date }}</strong>
+                        Entry Date: <strong>{{ entry_date }}</strong><br>
+                        Invoice Number:
+                        {% if invoice_number %}
+                        <strong>
+                            <a href="{{ url_for('index.invoice_download', invoice_number=invoice_number) }}"> {{ invoice_number }}</a>
+                        </strong><br>
+                        {% else %}
+                        <strong></strong><br>
+                        {% endif %}
+                        POD Number: <strong>{{ pod_number }}</strong>
                     </div>
                     {% else %}
                     <div class="alert alert-warning mt-3">{{ message }}</div>
