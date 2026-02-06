@@ -90,6 +90,26 @@
                         {% if r.product_details %}
                         <pre class="mt-2 mb-0">{{ r.product_details }}</pre>
                         {% endif %}
+                        {% if r.outgoing_info %}
+                        <div class="mt-2">
+                            {% for o in r.outgoing_info %}
+                            <div>
+                                WO/SO #: <strong>{{ o['WO/SO #'] }}</strong><br>
+                                Customer: <strong>{{ o['Customer'] }}</strong><br>
+                                Invoice#:
+                                {% if o['Invoice#'] %}
+                                <strong>
+                                    <a href="{{ url_for('index.outgoing_invoice', invoice_number=o['Invoice#']) }}"> {{ o['Invoice#'] }}</a>
+                                </strong><br>
+                                {% else %}
+                                <strong></strong><br>
+                                {% endif %}
+                                Outgoing Form#: <strong>{{ o['Outgoing Form#'] }}</strong><br>
+                                Invoice Date: <strong>{{ o['Invoice Date'] }}</strong>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
                     </li>
                     {% endfor %}
                 </ul>
