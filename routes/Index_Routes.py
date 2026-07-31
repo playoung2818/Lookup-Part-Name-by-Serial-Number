@@ -27,6 +27,66 @@ def _is_pl_pdf(file_path):
         return False
     return re.search(r"(^|[_\-\s])pl([_\-\s]|$)", file_name, flags=re.IGNORECASE) is not None
 
+
+def _invoice_match_priority(file_path, invoice_number):
+    file_name = os.path.basename(file_path)
+    file_name_lower = file_name.lower()
+    invoice_lower = invoice_number.lower()
+
+    # Prefer browser-renderable invoice PDFs over spreadsheets/other exports.
+    if file_name_lower == f"invoice_nta_{invoice_lower}.pdf":
+        return (0, file_name_lower)
+    if file_name_lower.endswith(".pdf") and f"invoice_nta_{invoice_lower}" in file_name_lower:
+        return (1, file_name_lower)
+    if file_name_lower.endswith(".pdf") and "invoice" in file_name_lower:
+        return (2, file_name_lower)
+    if file_name_lower.endswith(".pdf"):
+        return (3, file_name_lower)
+    return (4, file_name_lower)
+
+
+def _serial_variants(serial):
+    serial = (serial or "").strip()
+    if not serial:
+        return set()
+
+    variants = {serial, serial.upper(), serial.lower()}
+    extracted = extract_useful_number(serial)
+    if extracted:
+        variants.update({extracted, extracted.upper(), extracted.lower()})
+    return variants
+
+
+def _sn_field_variants(sn_field):
+    variants = set()
+    tokens = [
+        token.strip()
+        for token in re.split(r"[,;\n\r\t]+", str(sn_field))
+        if token and token.strip()
+    ]
+
+    for token in tokens:
+        variants.update(_serial_variants(token))
+
+        # Handle serials embedded in prose like "SN: Q0700370" or "Serial No Q0700370".
+        compact_matches = re.findall(r"[A-Za-z0-9-]{4,}", token)
+        for match in compact_matches:
+            variants.update(_serial_variants(match))
+
+    return variants
+
+
+def _order_lookup_variants(order_id):
+    order_id = (order_id or "").strip()
+    if not order_id:
+        return []
+
+    variants = [order_id]
+    match = re.search(r"^WO\d{2}-(\d+)$", order_id, flags=re.IGNORECASE)
+    if match:
+        variants.append(f"SO-{match.group(1)}")
+    return variants
+
 @index_bp.route('/', methods=['GET', 'POST'])
 def index():
     serial_number = ""
@@ -81,11 +141,24 @@ def index():
             word_serial_query = request.form.get('word_serial_query', '').strip()
             if word_serial_query:
                 try:
-                    rows = ReceivingLog.query.session.execute(
-                        text("SELECT * FROM word_file_log")
-                    ).mappings().all()
+                    search_variants = sorted(_serial_variants(word_serial_query), key=len, reverse=True)
+
+                    rows = []
+                    for variant in search_variants:
+                        variant_rows = ReceivingLog.query.session.execute(
+                            text(
+                                "SELECT * FROM word_file_log "
+                                "WHERE CAST(product_details AS text) ILIKE :serial"
+                            ),
+                            {"serial": f"%{variant}%"}
+                        ).mappings().all()
+                        rows.extend(dict(row) for row in variant_rows)
 
                     def row_has_exact_serial(row, serial):
+                        search_variants = _serial_variants(serial)
+                        if not search_variants:
+                            return False
+
                         product_details = row.get("product_details")
                         if product_details is None:
                             return False
@@ -93,9 +166,8 @@ def index():
                             try:
                                 product_details = json.loads(product_details)
                             except Exception:
-                                # Fallback: exact token search in raw text.
-                                pattern = r"(?<![A-Za-z0-9])" + re.escape(serial) + r"(?![A-Za-z0-9])"
-                                return re.search(pattern, product_details) is not None
+                                raw_lower = product_details.lower()
+                                return any(variant.lower() in raw_lower for variant in search_variants)
                         if isinstance(product_details, dict):
                             product_details = [product_details]
                         if not isinstance(product_details, list):
@@ -107,19 +179,28 @@ def index():
                             sn_field = item.get("sn")
                             if not sn_field:
                                 continue
-                            # Split on commas and newlines to catch serials listed in CSV-like blocks.
-                            serials = [
-                                s.strip()
-                                for s in re.split(r"[,\n]+", str(sn_field))
-                                if s.strip()
-                            ]
-                            if serial in serials:
+                            if _sn_field_variants(sn_field) & search_variants:
                                 return True
                         return False
 
-                    word_serial_results = [
-                        dict(row) for row in rows if row_has_exact_serial(row, word_serial_query)
-                    ]
+                    unique_rows = {}
+                    for row in rows:
+                        key = (
+                            row.get("file_path"),
+                            row.get("file_name"),
+                            row.get("order_id")
+                        )
+                        unique_rows[key] = row
+
+                    if unique_rows:
+                        word_serial_results = list(unique_rows.values())
+                    else:
+                        all_rows = ReceivingLog.query.session.execute(
+                            text("SELECT * FROM word_file_log")
+                        ).mappings().all()
+                        word_serial_results = [
+                            dict(row) for row in all_rows if row_has_exact_serial(row, word_serial_query)
+                        ]
 
                     def extract_eight_digits(file_name):
                         if not file_name:
@@ -134,26 +215,33 @@ def index():
 
                         where_clauses = []
                         params = {}
-                        if order_id:
-                            where_clauses.append("\"WO/SO #\" ILIKE :order_id")
-                            params["order_id"] = f"%{order_id}%"
+                        for idx, order_variant in enumerate(_order_lookup_variants(order_id)):
+                            key = f"order_id_{idx}"
+                            where_clauses.append(f"\"WO/SO #\" ILIKE :{key}")
+                            params[key] = f"%{order_variant}%"
                         if eight_digits:
                             where_clauses.append("\"WO/SO #\" ILIKE :eight_digits")
                             params["eight_digits"] = f"%{eight_digits}%"
 
+                        row["outgoing_info"] = []
                         if where_clauses:
-                            sql = (
-                                "SELECT \"WO/SO #\", \"Customer\", \"Invoice#\", "
-                                "\"Outgoing Form#\", \"Invoice Date\" "
-                                "FROM public.\"Combined WO-Outgoing Form Filing 2022-2025\" "
-                                f"WHERE {' OR '.join(where_clauses)}"
-                            )
-                            outgoing_rows = ReceivingLog.query.session.execute(
-                                text(sql), params
-                            ).mappings().all()
-                            row["outgoing_info"] = outgoing_rows
-                        else:
-                            row["outgoing_info"] = []
+                            try:
+                                sql = (
+                                    "SELECT \"WO/SO #\", \"Customer\", \"Invoice#\", "
+                                    "\"Outgoing Form#\", \"Invoice Date\" "
+                                    "FROM public.combined_wo_outgoing_form_filing "
+                                    f"WHERE {' OR '.join(where_clauses)}"
+                                )
+                                outgoing_rows = ReceivingLog.query.session.execute(
+                                    text(sql), params
+                                ).mappings().all()
+                                row["outgoing_info"] = outgoing_rows
+                            except Exception as outgoing_error:
+                                logging.error(
+                                    "Error querying outgoing info for word file %s: %s",
+                                    file_name,
+                                    outgoing_error
+                                )
                 except Exception as e:
                     logging.error(f"Error querying word_file_log: {e}")
                     word_serial_results = []
@@ -250,19 +338,26 @@ def invoice_download():
     if not matches:
         abort(404)
 
-    return send_file(matches[0], as_attachment=False)
+    selected = sorted(
+        matches,
+        key=lambda path: _invoice_match_priority(path, invoice_number)
+    )[0]
+
+    return send_file(selected, as_attachment=False)
 
 @index_bp.route('/outgoing-invoice', methods=['GET'])
 def outgoing_invoice():
     invoice_number = request.args.get('invoice_number', '').strip()
-    if not invoice_number:
+    outgoing_form = request.args.get('outgoing_form', '').strip()
+    if not invoice_number and not outgoing_form:
         abort(400)
 
-    invoice_lower = invoice_number.lower()
+    search_terms = [term.lower() for term in [outgoing_form, invoice_number] if term]
     matches = []
     for root, _, files in os.walk(OUTGOING_DIR):
         for name in files:
-            if invoice_lower in name.lower():
+            name_lower = name.lower()
+            if any(term in name_lower for term in search_terms):
                 full_path = os.path.join(root, name)
                 if not _is_pl_pdf(full_path):
                     matches.append(full_path)

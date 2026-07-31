@@ -99,7 +99,7 @@
                                 Invoice#:
                                 {% if o['Invoice#'] %}
                                 <strong>
-                                    <a href="{{ url_for('index.outgoing_invoice', invoice_number=o['Invoice#']) }}"> {{ o['Invoice#'] }}</a>
+                                    <a href="{{ url_for('index.outgoing_invoice', invoice_number=o['Invoice#'], outgoing_form=o['Outgoing Form#']) }}"> {{ o['Invoice#'] }}</a>
                                 </strong><br>
                                 {% else %}
                                 <strong></strong><br>
