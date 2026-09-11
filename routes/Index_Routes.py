@@ -17,7 +17,7 @@ except Exception:
     Document = None
 
 index_bp = Blueprint('index', __name__)
-INVOICE_DIR = r"c:\Users\Admin\OneDrive - neousys-tech\Desktop\Incoming"
+INVOICE_DIR = r"C:\Users\Admin\OneDrive - neousys-tech\Share NTA Warehouse\01 Incoming\HQ Shipping Documents"
 OUTGOING_DIR = r"C:\Users\Admin\OneDrive - neousys-tech\Share NTA Warehouse\03 Outgoing (WOOF)"
 
 
@@ -137,8 +137,8 @@ def index():
                     logging.error(f"Error pruning serial numbers: {e}")
                     pruned_serials_text = "Error occurred during pruning."
 
-        if 'word_serial_query' in request.form:
-            word_serial_query = request.form.get('word_serial_query', '').strip()
+        if 'word_serial_query' in request.form or 'serial_number' in request.form:
+            word_serial_query = request.form.get('serial_number', request.form.get('word_serial_query', '')).strip()
             if word_serial_query:
                 try:
                     search_variants = sorted(_serial_variants(word_serial_query), key=len, reverse=True)

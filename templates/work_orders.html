@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Receiving and Work Order Search</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<main class="container py-4">
+    <h1 class="text-center my-4" style="font-size: clamp(24px, 4vw, 32px); font-weight: 600; color: #2c3e50">Receiving and Work Order Search</h1>
+    {% include 'search_bars.html' %}
+    {% for error in errors %}<div class="alert alert-warning">{{ error }}</div>{% endfor %}
+    {% if query %}
+    <section class="card mb-3">
+        <div class="card-header"><h2 class="h5 mb-0">Outgoing PDFs{% if digits %} — SO-{{ digits }}{% endif %}</h2></div>
+        <div class="card-body">
+        {% if not digits %}
+            <p class="mb-0">Enter an SO number such as SO-20260295 to search outgoing PDFs.</p>
+        {% elif outgoing %}
+            <div class="table-responsive"><table class="table">
+                <thead><tr><th>WO/SO #</th><th>Customer</th><th>Invoice</th><th>Outgoing form</th><th>Invoice date</th><th>PDF files</th></tr></thead>
+                <tbody>{% for row in outgoing %}<tr>
+                    <td>{{ row['WO/SO #'] }}</td><td>{{ row['Customer'] or '' }}</td>
+                    <td>{{ row['Invoice#'] or '' }}</td><td>{{ row['Outgoing Form#'] or '' }}</td><td>{{ row['Invoice Date'] or '' }}</td>
+                    <td>{% for file in row.files %}<div><a target="_blank" rel="noopener" href="{{ url_for('work_orders.outgoing_pdf', path=file.path) }}">{{ file.name }}</a></div>
+                    {% else %}<span class="text-muted">No matching PDF found.</span>{% endfor %}</td>
+                </tr>{% endfor %}</tbody>
+            </table></div>
+        {% else %}<p class="mb-0">No outgoing mapping found for this SO number.</p>{% endif %}
+        </div>
+    </section>
+    <section class="card mb-3">
+        <div class="card-header"><h2 class="h5 mb-0">Original work order PDFs</h2></div>
+        <div class="card-body">
+            {% for pdf in pdfs %}<div><a target="_blank" rel="noopener" href="{{ url_for('work_orders.document', kind='pdf', record_id=pdf.id) }}">{{ pdf.file_name }}</a></div>
+            {% else %}<p class="mb-0">No original work order PDFs found.</p>{% endfor %}
+            {% if pdfs|length == 200 %}<p>Showing the first 200 records. Narrow your search for more specific results.</p>{% endif %}
+        </div>
+    </section>
+    <section class="card mb-3">
+        <div class="card-header"><h2 class="h5 mb-0">Word documents and serial numbers</h2></div>
+        <div class="card-body">
+        {% for word in words %}
+            <h3 class="h6"><a href="{{ url_for('work_orders.document', kind='word', record_id=word.id) }}">{{ word.file_name }}</a></h3>
+            <div class="table-responsive"><table class="table table-bordered">
+                <thead><tr><th>Product</th><th>Quantity</th><th>Serial numbers</th><th>Notes</th></tr></thead>
+                <tbody>{% for item in word.details %}<tr>
+                    <td>{{ item.get('product_number', '') }}</td><td>{{ item.get('qty', '') }}</td>
+                    <td style="white-space: pre-wrap">{{ item.get('sn', '') }}</td><td>{{ item.get('notes', '') }}</td>
+                </tr>{% else %}<tr><td colspan="4">No product details available.</td></tr>{% endfor %}</tbody>
+            </table></div>
+        {% else %}<p class="mb-0">No Word documents found.</p>{% endfor %}
+        {% if words|length == 200 %}<p>Showing the first 200 records. Narrow your search for more specific results.</p>{% endif %}
+        </div>
+    </section>
+    {% endif %}
+</main>
+</body>
+</html>

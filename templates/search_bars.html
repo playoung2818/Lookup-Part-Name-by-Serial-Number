@@ -1,0 +1,30 @@
+{% set so_mode = request.blueprint == 'work_orders' %}
+<style>
+    .search-panel { max-width: 760px; margin: 24px auto 32px; }
+    .search-tabs { display: flex; gap: 24px; border-bottom: 1px solid #dce2e8; margin-bottom: 20px; }
+    .search-tab { padding: 12px 2px; color: #627084; text-decoration: none; border-bottom: 3px solid transparent; font-weight: 600; }
+    .search-tab:hover { color: #175cd3; }
+    .search-tab.active { color: #175cd3; border-bottom-color: #175cd3; }
+    .search-tab:focus-visible { outline: 2px solid #175cd3; outline-offset: 3px; }
+    .search-input-row { display: flex; gap: 10px; }
+    .search-input-row input { min-width: 0; padding: 12px 14px; border-radius: 8px; }
+    .search-input-row button { padding: 12px 22px; border-radius: 8px; }
+    .search-hint { margin: 10px 0 0; color: #627084; font-size: .875rem; }
+</style>
+<section class="search-panel" aria-label="Search records">
+    <nav class="search-tabs" aria-label="Search type">
+        <a class="search-tab {{ 'active' if not so_mode else '' }}" {% if not so_mode %}aria-current="page"{% endif %} href="{{ url_for('index.index') }}">Serial Number</a>
+        <a class="search-tab {{ 'active' if so_mode else '' }}" {% if so_mode %}aria-current="page"{% endif %} href="{{ url_for('work_orders.index') }}">SO Number</a>
+    </nav>
+    <form method="{{ 'get' if so_mode else 'post' }}" action="{{ url_for('work_orders.index') if so_mode else url_for('index.index') }}">
+        <label class="visually-hidden" for="record-search">{{ 'SO number' if so_mode else 'Serial number' }}</label>
+        <div class="search-input-row">
+            <input id="record-search" class="form-control" type="search" name="{{ 'q' if so_mode else 'serial_number' }}"
+                   value="{{ query|default('') if so_mode else serial_number|default('') }}"
+                   placeholder="{{ 'Enter SO number, e.g. SO-20260295' if so_mode else 'Enter serial number, e.g. Q0700370' }}"
+                   aria-describedby="search-hint" required>
+            <button class="btn btn-primary" type="submit">Search</button>
+        </div>
+        <p class="search-hint" id="search-hint">{{ 'WO PDFs, Word product details, and outgoing PDFs.' if so_mode else 'Part information and used history.' }}</p>
+    </form>
+</section>
