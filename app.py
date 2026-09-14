@@ -19,6 +19,7 @@ from functions.utils import (
 from routes.Index_Routes import index_bp
 from routes.Api_Routes import api_bp
 from routes.Work_Order_Routes import work_orders_bp
+from routes.Part_Usage_Routes import part_usage_bp
 
 def create_app():
     """Application factory — makes testing & deployment easier."""
@@ -34,6 +35,7 @@ def create_app():
     app.register_blueprint(index_bp)
     app.register_blueprint(api_bp, url_prefix="/api")
     app.register_blueprint(work_orders_bp)
+    app.register_blueprint(part_usage_bp)
 
     @app.route('/api/word-files', methods=['GET'])
     def get_word_files():
