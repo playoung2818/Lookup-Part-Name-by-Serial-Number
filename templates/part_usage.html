@@ -11,6 +11,7 @@
 <main class="container py-4">
     {% include 'brand_header.html' %}
     {% include 'search_bars.html' %}
+    {% if description_warning %}<div class="alert alert-warning">{{ description_warning }}</div>{% endif %}
     {% if error %}<div class="alert alert-warning">{{ error }}</div>
     {% elif query %}
     <section class="card result-card word-results">
@@ -19,7 +20,7 @@
             <p class="text-muted">Recorded Word work-order usage for “{{ query }}”. Quantities are per document line, not current inventory or confirmed shipped totals. Documents are sorted by filename, descending.</p>
             {% if rows %}
             <div class="table-responsive"><table class="table">
-                <thead><tr><th>Part number</th><th>Quantity</th><th>Serial numbers</th><th>Work order / SO</th><th>Source document</th><th>Notes</th></tr></thead>
+                <thead><tr><th>Part number</th><th>Quantity</th><th>Serial numbers</th><th>Work order / SO</th><th>Source document</th><th>Notes</th><th>Description</th></tr></thead>
                 <tbody>{% for row in rows %}<tr>
                     <td><strong>{{ row.product_number }}</strong></td>
                     <td><span class="quantity-badge">{{ row.get('qty', '') }}</span></td>
@@ -27,6 +28,7 @@
                     <td>{% if row.so_digits %}<a class="document-link" href="{{ url_for('work_orders.index', q='SO-' ~ row.so_digits) }}">SO-{{ row.so_digits }}</a>{% else %}{{ row.order_id or '' }}{% endif %}</td>
                     <td><a class="document-link" href="{{ url_for('work_orders.document', kind='word', record_id=row.document_id) }}"><span class="file-type">DOCX</span>{{ row.file_name }}</a></td>
                     <td>{{ row.get('notes', '') }}</td>
+                    <td style="white-space: pre-wrap; min-width: 240px">{{ row.get('description') or '—' }}</td>
                 </tr>{% endfor %}</tbody>
             </table></div>
             {% if pages > 1 %}<nav aria-label="Usage result pages" class="d-flex align-items-center gap-3 mt-3">

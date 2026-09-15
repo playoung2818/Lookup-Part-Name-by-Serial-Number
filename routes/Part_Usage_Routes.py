@@ -1,7 +1,7 @@
 import json
 
 from flask import Blueprint, current_app, render_template, request
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 
 from models.models import db
 from routes.Work_Order_Routes import order_digits
@@ -52,6 +52,29 @@ def index():
     total = len(rows)
     pages = max(1, (total + 49) // 50)
     page = min(page, pages)
+    visible_rows = rows[(page - 1) * 50:page * 50]
+    description_warning = None
+    if visible_rows:
+        try:
+            parts = sorted({str(row.get('product_number') or '').strip().lower() for row in visible_rows})
+            with db.engine.connect() as connection:
+                descriptions = connection.execute(text('''
+                    SELECT "Part Name", "Description" FROM public."Item Info"
+                    WHERE LOWER(TRIM("Part Name")) IN :parts
+                    ORDER BY "Name"
+                ''').bindparams(bindparam('parts', expanding=True)), {'parts': parts}).mappings()
+                lookup = {}
+                for item in descriptions:
+                    key = item['Part Name'].strip().lower()
+                    description = (item['Description'] or '').strip()
+                    if description and description not in lookup.setdefault(key, []):
+                        lookup[key].append(description)
+            for row in visible_rows:
+                row['description'] = '\n'.join(lookup.get(str(row.get('product_number') or '').strip().lower(), []))
+        except Exception:
+            current_app.logger.exception('Part description lookup failed')
+            description_warning = 'Part descriptions are temporarily unavailable.'
     return render_template('part_usage.html', query=query, error=error, total=total,
+                           description_warning=description_warning,
                            document_count=len({row['document_id'] for row in rows}),
-                           rows=rows[(page - 1) * 50:page * 50], page=page, pages=pages)
+                           rows=visible_rows, page=page, pages=pages)
