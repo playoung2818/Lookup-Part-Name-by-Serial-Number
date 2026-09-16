@@ -21,6 +21,44 @@ INVOICE_DIR = r"C:\Users\Admin\OneDrive - neousys-tech\Share NTA Warehouse\01 In
 OUTGOING_DIR = r"C:\Users\Admin\OneDrive - neousys-tech\Share NTA Warehouse\03 Outgoing (WOOF)"
 
 
+def _deduplicate_outgoing_rows(rows):
+    def normalized(value):
+        return str(value).strip().casefold() if value is not None else ""
+
+    def completeness(row):
+        return (
+            bool(normalized(row.get("Invoice Date"))),
+            sum(bool(normalized(value)) for value in row.values()),
+        )
+
+    unique = {}
+    for index, source in enumerate(rows):
+        row = dict(source)
+        # Customer aliases can differ between sources for the same shipment.
+        key = tuple(normalized(row.get(field)) for field in (
+            "WO/SO #", "Invoice#", "Outgoing Form#"
+        ))
+        if not all(key):
+            # Incomplete identifiers cannot safely establish a duplicate.
+            key = (index,)
+        if key not in unique:
+            unique[key] = row
+            continue
+        existing = unique[key]
+        preferred, other = (row, existing) if completeness(row) > completeness(existing) else (existing, row)
+        unique[key] = {
+            field: value if normalized(value) else other.get(field)
+            for field, value in preferred.items()
+        }
+    return list(unique.values())
+
+
+def _is_vendor_name(invoice_number):
+    # The receiving log has no separate vendor field; name-only values have no digits.
+    invoice_number = (invoice_number or "").strip()
+    return bool(invoice_number) and not any(char.isdigit() for char in invoice_number)
+
+
 def _is_pl_pdf(file_path):
     file_name = os.path.basename(file_path)
     if not file_name.lower().endswith(".pdf"):
@@ -235,7 +273,7 @@ def index():
                                 outgoing_rows = ReceivingLog.query.session.execute(
                                     text(sql), params
                                 ).mappings().all()
-                                row["outgoing_info"] = outgoing_rows
+                                row["outgoing_info"] = _deduplicate_outgoing_rows(outgoing_rows)
                             except Exception as outgoing_error:
                                 logging.error(
                                     "Error querying outgoing info for word file %s: %s",
@@ -264,6 +302,7 @@ def index():
                            entry_date=entry_date,
                            invoice_number=invoice_number,
                            pod_number=pod_number,
+                           invoice_is_vendor_name=_is_vendor_name(invoice_number),
                            found=found,
                            message=message,
                            prune_input=prune_input,
@@ -327,10 +366,10 @@ def word_download():
 @index_bp.route('/invoice-download', methods=['GET'])
 def invoice_download():
     invoice_number = request.args.get('invoice_number', '').strip()
-    if not invoice_number:
+    if not invoice_number or _is_vendor_name(invoice_number):
         abort(400)
 
-    pattern = os.path.join(INVOICE_DIR, f"*{invoice_number}*")
+    pattern = os.path.join(INVOICE_DIR, f"*{glob.escape(invoice_number)}*")
     matches = [
         p for p in glob.glob(pattern)
         if os.path.isfile(p) and not _is_pl_pdf(p)

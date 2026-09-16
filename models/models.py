@@ -13,5 +13,4 @@ class ReceivingLog(db.Model):
     pod_number    = db.Column(db.String(255))
     part_number   = db.Column(db.String(255))
     quantity      = db.Column(db.Float)
-    reference      = db.Column('Reference', db.Text) 
-
+    reference      = db.Column('Reference', db.Text)

@@ -26,12 +26,12 @@
                         Part: <strong>{{ part_name }}</strong><br>
                         Entry Date: <strong>{{ entry_date }}</strong><br>
                         Invoice Number:
-                        {% if invoice_number %}
+                        {% if invoice_number and not invoice_is_vendor_name %}
                         <strong>
                             <a class="document-link" href="{{ url_for('index.invoice_download', invoice_number=invoice_number) }}"> {{ invoice_number }}</a>
                         </strong><br>
                         {% else %}
-                        <strong></strong><br>
+                        <strong>{{ invoice_number }}</strong><br>
                         {% endif %}
                         POD Number: <strong>{{ pod_number }}</strong>
                     </div>
@@ -55,7 +55,10 @@
                         <a class="document-link" href="{{ url_for('index.word_download', file_path=r.file_path) }}"><span class="file-type">DOCX</span> Download</a>
                         {% endif %}
                         {% if r.product_details %}
-                        <pre class="mt-2 mb-0">{{ r.product_details }}</pre>
+                        <details class="parsed-data mt-2">
+                            <summary>Raw parsed data</summary>
+                            <pre class="mt-2 mb-0">{{ r.product_details }}</pre>
+                        </details>
                         {% endif %}
                         {% if r.outgoing_info %}
                         <div class="mt-2">

@@ -30,3 +30,5 @@ body.bg-light { background-color: #faf9f6 !important; }
 .history-list { list-style: none; margin: 0; padding: 0; }
 .history-list > li + li { border-top: 1px solid #dce5ed; margin-top: 24px; padding-top: 24px; }
 .history-list pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; border-radius: 8px; background: var(--tint); color: #63312b; }
+.parsed-data summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.parsed-data summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }

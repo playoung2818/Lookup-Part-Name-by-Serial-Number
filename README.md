@@ -8,6 +8,14 @@ This is a Flask-based web application that allows users to:
 - Prune multiple serial numbers from raw text
 - Sync receiving log data from a Excel Sheet to a PostgreSQL database
 
+To run this app with the Word-file API, run
+`python app.py`. This single process serves both the web app and API on port 5000;
+no separate API process is needed.
+The API is available at `http://127.0.0.1:5000/api/word-files` and
+`http://localhost:5000/api/word-files`.
+The API reads existing records from `word_file_log`; importing Word files is
+handled separately. Set `DATABASE_DSN` to override the database connection.
+
 ---
 
 ![Animation](https://github.com/user-attachments/assets/639a5ecf-670b-4952-8bad-09c2a29fa427)
