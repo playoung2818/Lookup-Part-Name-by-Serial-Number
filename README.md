@@ -4,7 +4,6 @@
 
 This is a Flask-based web application that allows users to:
 - Look up part names by serial numbers
-- Retrieve part usage history
 - Prune multiple serial numbers from raw text
 - Sync receiving log data from a Excel Sheet to a PostgreSQL database
 
@@ -42,7 +41,7 @@ handled separately. Set `DATABASE_DSN` to override the database connection.
     - `routes/index_routes.py` – Main UI routes  
     - `routes/api_routes.py` – API endpoints   
     - `services/utils.py` – Helper functions (e.g., SN extractor)  
-    - `services/validation.py` – Matching logic for part usage history  
+    - `services/validation.py` – Serial number and part matching logic
     - `templates/index.html` – Frontend template  
   - `app.py` – Entry point using `create_app()`  
   - `requirements.txt` – Python dependencies  

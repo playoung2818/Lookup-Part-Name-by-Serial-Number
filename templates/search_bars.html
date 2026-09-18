@@ -1,6 +1,5 @@
 {% set so_mode = request.blueprint == 'work_orders' %}
-{% set part_mode = request.blueprint == 'part_usage' %}
-{% set serial_mode = not so_mode and not part_mode %}
+{% set serial_mode = not so_mode %}
 <style>
     .search-panel { max-width: 760px; margin: 24px auto 32px; }
     .search-tabs { display: flex; gap: 24px; flex-wrap: wrap; border-bottom: 1px solid #dce2e8; margin-bottom: 20px; }
@@ -17,17 +16,16 @@
     <nav class="search-tabs" aria-label="Search type">
         <a class="search-tab {{ 'active' if serial_mode else '' }}" {% if serial_mode %}aria-current="page"{% endif %} href="{{ url_for('index.index') }}">Serial Number</a>
         <a class="search-tab {{ 'active' if so_mode else '' }}" {% if so_mode %}aria-current="page"{% endif %} href="{{ url_for('work_orders.index') }}">SO Number</a>
-        <a class="search-tab {{ 'active' if part_mode else '' }}" {% if part_mode %}aria-current="page"{% endif %} href="{{ url_for('part_usage.index') }}">Part Usage History</a>
     </nav>
-    <form method="{{ 'post' if serial_mode else 'get' }}" action="{{ url_for('part_usage.index') if part_mode else url_for('work_orders.index') if so_mode else url_for('index.index') }}">
-        <label class="visually-hidden" for="record-search">{{ 'Part number' if part_mode else 'SO number' if so_mode else 'Serial number' }}</label>
+    <form method="{{ 'post' if serial_mode else 'get' }}" action="{{ url_for('work_orders.index') if so_mode else url_for('index.index') }}">
+        <label class="visually-hidden" for="record-search">{{ 'SO number' if so_mode else 'Serial number' }}</label>
         <div class="search-input-row">
             <input id="record-search" class="form-control" type="search" name="{{ 'serial_number' if serial_mode else 'q' }}"
                    value="{{ serial_number|default('') if serial_mode else query|default('') }}"
-                   placeholder="{{ 'Enter full or partial part number, e.g. DDR5' if part_mode else 'Enter SO number, e.g. SO-20260295' if so_mode else 'Enter serial number, e.g. Q0700370' }}"
+                   placeholder="{{ 'Enter SO number, e.g. SO-20260295' if so_mode else 'Enter serial number, e.g. Q0700370' }}"
                    aria-describedby="search-hint" required>
             <button class="btn btn-primary" type="submit">Search</button>
         </div>
-        <p class="search-hint" id="search-hint">{{ 'Find recorded part quantities and serial numbers across Word work orders.' if part_mode else 'WO PDFs, Word product details, and outgoing PDFs.' if so_mode else 'Part information and used history.' }}</p>
+        <p class="search-hint" id="search-hint">{{ 'WO PDFs, Word product details, and outgoing PDFs.' if so_mode else 'Part information and used history.' }}</p>
     </form>
 </section>
