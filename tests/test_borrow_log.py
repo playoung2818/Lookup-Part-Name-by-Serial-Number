@@ -61,8 +61,11 @@ class BorrowLogTests(unittest.TestCase):
         page = self.client.get('/warehouse-borrow-log/?q=SN-1&status=RETURNED')
         self.assertIn(b'Test borrower', page.data)
         self.assertIn(b'<strong>0</strong>', page.data)
-        self.assertIn(b'<strong>3</strong>', page.data)
+        self.assertIn(b'<td class="qty">3</td>', page.data)
         self.assertNotIn(b'Test borrower', self.client.get('/warehouse-borrow-log/?status=BORROWED').data)
+        self.assertNotIn(b'Test borrower', self.client.get('/warehouse-borrow-log/').data)
+        self.assertNotIn(b'Test borrower', self.client.get('/warehouse-borrow-log/?q=SN-1').data)
+        self.assertIn(b'Test borrower', self.client.get('/warehouse-borrow-log/?status=').data)
 
     def test_invalid_inputs_and_csrf_do_not_write(self):
         for changes in [dict(borrowed_qty='0'), dict(returned_qty='-1'), dict(borrowed_qty='1.5'),

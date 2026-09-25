@@ -85,11 +85,13 @@ def index():
     open_count = sum(r.status in ('BORROWED', 'PARTIAL RETURN') for r in records)
     total_qty = sum(r.borrowed_qty for r in records)
     query = request.args.get('q', '').strip()
-    status = request.args.get('status', '')
+    status = request.args.get('status', 'NOT_RETURNED')
     if query:
         records = [r for r in records if query.casefold() in ' '.join(str(getattr(r, key) or '') for key in
                    ('borrow_id', 'borrower', 'item_number', 'serial_number', 'warehouse', 'purpose', 'issued_by')).casefold()]
-    if status:
+    if status == 'NOT_RETURNED':
+        records = [r for r in records if r.status != 'RETURNED']
+    elif status:
         records = [r for r in records if r.status == status]
     return render_template('borrow_log.html', records=records, open_count=open_count,
                            total_qty=total_qty, query=query, status=status, statuses=STATUSES)

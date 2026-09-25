@@ -1,4 +1,22 @@
-<header class="brand-header">
-    <img src="{{ url_for('static', filename='neousys-logo.jpg') }}" alt="Neousys Technology" width="340" height="85" class="brand-logo">
-    <h1 class="page-title">{{ 'Warehouse Borrow Log' if request.blueprint == 'borrow_log' else 'SN# and WO Search' }}</h1>
+{% set borrow_mode = request.blueprint == 'borrow_log' %}
+{% set so_mode = request.blueprint == 'work_orders' %}
+{% set entry_mode = request.endpoint == 'borrow_log.batch' %}
+{% set edit_mode = request.endpoint == 'borrow_log.edit' %}
+{% macro nav_icon(kind) %}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{% if kind == 'serial' %}<path d="M4 5v14M8 5v14M11 5v14M16 5v14M20 5v14"/>{% elif kind == 'orders' %}<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5M9 12h6M9 16h6"/>{% else %}<path d="m3 7 9-4 9 4-9 4zM3 7v10l9 4 9-4V7M12 11v10"/>{% endif %}</svg>{% endmacro %}
+<a class="skip-link" href="#workspace-content">Skip to content</a>
+<aside class="app-sidebar" aria-label="Application navigation">
+    <a class="sidebar-brand" href="{{ url_for('index.index') }}"><img src="{{ url_for('static', filename='neousys-logo.jpg') }}" alt="Neousys Technology" width="340" height="85"><span>WAREHOUSE OPERATIONS</span></a>
+    <div class="nav-section-label">WORKSPACE</div>
+    <nav class="sidebar-nav" aria-label="Modules">
+        <a class="{{ 'active' if not borrow_mode and not so_mode else '' }}" {% if not borrow_mode and not so_mode %}aria-current="page"{% endif %} href="{{ url_for('index.index') }}">{{ nav_icon('serial') }}<span>Serial number search</span></a>
+        <a class="{{ 'active' if so_mode else '' }}" {% if so_mode %}aria-current="page"{% endif %} href="{{ url_for('work_orders.index') }}">{{ nav_icon('orders') }}<span>SO number search</span></a>
+        <a class="{{ 'active' if borrow_mode else '' }}" {% if borrow_mode %}aria-current="page"{% endif %} href="{{ url_for('borrow_log.index') }}">{{ nav_icon('borrow') }}<span>Warehouse Borrow Log</span></a>
+    </nav>
+    <div class="sidebar-footer">Neousys Technology<span>Warehouse management</span></div>
+</aside>
+<header class="brand-header" id="workspace-content" tabindex="-1">
+    <div><div class="page-eyebrow">WAREHOUSE / {{ 'BORROWING' if borrow_mode else 'DOCUMENTS' if so_mode else 'INVENTORY' }}</div>
+    <h1 class="page-title">{{ 'New borrow entries' if entry_mode else 'Edit borrow record' if edit_mode else 'Warehouse Borrow Log' if borrow_mode else 'SO number search' if so_mode else 'Serial number search' }}</h1>
+    <p class="page-description">{{ 'Enter one item per row. Save your entries together.' if entry_mode else 'Update item details and record returns.' if edit_mode else 'Track borrowed items, outstanding quantities, and returns.' if borrow_mode else 'Find work orders, outgoing PDFs, and supporting documents.' if so_mode else 'Look up received parts and their usage history.' }}</p></div>
+    {% if borrow_mode and (entry_mode or edit_mode) %}<a class="btn btn-outline-secondary" href="{{ url_for('borrow_log.index') }}">← Back to log</a>{% endif %}
 </header>

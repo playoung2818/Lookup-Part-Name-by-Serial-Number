@@ -16,18 +16,20 @@
 {% endmacro %}
 <!doctype html>
 <html lang="en"><head>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='Icon.ico') }}">
     <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Multiple entries · Warehouse Borrow Log</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='search_results.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='borrow_log.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='erp.css') }}?v=1" rel="stylesheet">
 </head><body class="bg-light"><main class="container-fluid py-4 borrow-page">
 {% include 'brand_header.html' %}{% include 'search_bars.html' %}
 <section class="borrow-sheet">
     <div class="borrow-title"><h2>Multiple borrow entries</h2><span>Save up to 100 items together</span></div>
     <form method="post" id="batch-form">
         <input type="hidden" name="csrf_token" value="{{ session.borrow_csrf }}">
-        <div class="p-3">
+        <div class="batch-instructions">
             {% if errors %}<div class="alert alert-danger" role="alert"><strong>No records were saved.</strong><ul class="mb-0">{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}
             <p>Use Tab to move between cells. Rows with no serial number and no item name are skipped.</p>
         </div>
@@ -37,7 +39,7 @@
                 <tbody id="batch-rows">{% for row in rows %}{{ grid_row(row) }}{% endfor %}</tbody>
             </table>
         </div>
-        <div class="p-3 d-flex gap-2 flex-wrap align-items-center">
+        <div class="batch-actions d-flex gap-2 flex-wrap align-items-center">
             <button type="button" class="btn btn-outline-secondary" id="add-row">+ Add row</button>
             <button type="submit" class="btn btn-primary" id="save-batch">Save all entries</button>
             <a class="btn btn-outline-secondary" href="{{ url_for('borrow_log.index') }}">Cancel</a>
