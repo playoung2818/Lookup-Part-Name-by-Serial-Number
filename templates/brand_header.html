@@ -1,4 +1,4 @@
 <header class="brand-header">
     <img src="{{ url_for('static', filename='neousys-logo.jpg') }}" alt="Neousys Technology" width="340" height="85" class="brand-logo">
-    <h1 class="page-title">SN# and WO Search</h1>
+    <h1 class="page-title">{{ 'Warehouse Borrow Log' if request.blueprint == 'borrow_log' else 'SN# and WO Search' }}</h1>
 </header>

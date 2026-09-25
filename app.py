@@ -5,6 +5,7 @@ from tempfile import NamedTemporaryFile
 import logging
 import os
 import re
+import secrets
 from dateutil.parser import parse
 from config import Config
 
@@ -19,13 +20,17 @@ from functions.utils import (
 from routes.Index_Routes import index_bp
 from routes.Api_Routes import api_bp
 from routes.Work_Order_Routes import work_orders_bp
+from routes.Borrow_Log_Routes import borrow_log_bp
 
-def create_app():
+def create_app(test_config=None):
     """Application factory — makes testing & deployment easier."""
     app = Flask(__name__,
                 template_folder="templates",
                 static_folder="static")
     app.config.from_object(Config)
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
+    if test_config:
+        app.config.update(test_config)
 
     # initialize SQLAlchemy
     db.init_app(app)
@@ -34,6 +39,7 @@ def create_app():
     app.register_blueprint(index_bp)
     app.register_blueprint(api_bp, url_prefix="/api")
     app.register_blueprint(work_orders_bp)
+    app.register_blueprint(borrow_log_bp)
 
     @app.route('/api/word-files', methods=['GET'])
     def get_word_files():

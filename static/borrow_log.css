@@ -1,0 +1,37 @@
+.borrow-page { max-width: 1900px; }
+.borrow-sheet { border: 1px solid #cbd7e4; border-radius: 8px; background: white; overflow: hidden; }
+.borrow-title { background: #1f4e78; color: white; padding: 18px 22px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.borrow-title h2 { font-size: 1.35rem; margin: 0; font-weight: 700; }
+.borrow-summary { display: flex; flex-wrap: wrap; gap: 24px; padding: 24px; align-items: center; }
+.borrow-summary > div { border: 1px solid #d9eaf7; min-width: 180px; }
+.borrow-summary h3 { font-size: .95rem; font-weight: 700; background: #d9eaf7; padding: 10px 16px; margin: 0; }
+.borrow-summary strong { display: block; padding: 10px 16px; font-size: 1.6rem; color: #1f4e78; }
+.borrow-summary p { color: #526477; margin: 0; }
+.borrow-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; padding: 0 24px 24px; }
+.borrow-filters > div:first-child { flex: 1 1 300px; }
+.borrow-filters label { display: block; margin-bottom: 6px; }
+.borrow-table-wrap { overflow: auto; max-height: 68vh; }
+.borrow-table { border-collapse: separate; border-spacing: 0; width: 100%; font-family: Carlito, Calibri, Arial, sans-serif; font-size: .9rem; }
+.borrow-table th { background: #4472c4; color: white; position: sticky; top: 0; z-index: 1; }
+.borrow-table th, .borrow-table td { padding: 12px; border-right: 1px solid #d9e2f3; border-bottom: 1px solid #d9e2f3; }
+.borrow-table td { white-space: nowrap; }
+.borrow-table tbody tr:nth-child(even) { background: #eaf0fa; }
+.borrow-table td.purpose { white-space: pre-wrap; min-width: 220px; max-width: 340px; overflow-wrap: anywhere; }
+.borrow-table .qty { text-align: center; }
+.borrow-table a { color: #17497e; font-weight: 700; }
+.borrow-table .qty-outstanding { background: #ffc000; color: #3b2b00; }
+.borrow-table .age-medium { background: #fce5cd; }
+.borrow-table .age-long, .borrow-table .status-error { background: #f4cccc; color: #9c0006; font-weight: 700; }
+.borrow-table .status-returned { background: #d9ead3; }
+.borrow-table .status-partial-return { background: #fff2cc; }
+.borrow-table .status-borrowed { background: #e7e6e6; }
+.borrow-table caption, .borrow-legend { padding: 16px 24px; color: #526477; }
+.borrow-legend { margin: 0; font-size: .85rem; }
+.borrow-form { padding: 24px; }
+.empty-log { text-align: center; padding: 36px !important; }
+.batch-table td { padding: 6px; vertical-align: top; }
+.batch-table input { min-width: 160px; }
+.batch-table input[name="serial_number"], .batch-table input[name="item_number"] { min-width: 230px; }
+.batch-table input[type="number"] { min-width: 100px; width: 100px; }
+.batch-table .lookup-status { display: block; white-space: normal; max-width: 230px; font-size: .75rem; }
+.batch-wrap { max-height: 60vh; }
