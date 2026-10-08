@@ -10,6 +10,7 @@ import re
 import logging
 
 from functions.utils import extract_useful_number
+from functions.wo_lookup import find_by_serial
 from functions.Validation import validate_sn_part_matches_via_api 
 try:
     from docx import Document
@@ -181,16 +182,7 @@ def index():
                 try:
                     search_variants = sorted(_serial_variants(word_serial_query), key=len, reverse=True)
 
-                    rows = []
-                    for variant in search_variants:
-                        variant_rows = ReceivingLog.query.session.execute(
-                            text(
-                                "SELECT * FROM word_file_log "
-                                "WHERE CAST(product_details AS text) ILIKE :serial"
-                            ),
-                            {"serial": f"%{variant}%"}
-                        ).mappings().all()
-                        rows.extend(dict(row) for row in variant_rows)
+                    rows = find_by_serial(search_variants)
 
                     def row_has_exact_serial(row, serial):
                         search_variants = _serial_variants(serial)
@@ -221,24 +213,7 @@ def index():
                                 return True
                         return False
 
-                    unique_rows = {}
-                    for row in rows:
-                        key = (
-                            row.get("file_path"),
-                            row.get("file_name"),
-                            row.get("order_id")
-                        )
-                        unique_rows[key] = row
-
-                    if unique_rows:
-                        word_serial_results = list(unique_rows.values())
-                    else:
-                        all_rows = ReceivingLog.query.session.execute(
-                            text("SELECT * FROM word_file_log")
-                        ).mappings().all()
-                        word_serial_results = [
-                            dict(row) for row in all_rows if row_has_exact_serial(row, word_serial_query)
-                        ]
+                    word_serial_results = [row for row in rows if row_has_exact_serial(row, word_serial_query)]
 
                     def extract_eight_digits(file_name):
                         if not file_name:
@@ -281,7 +256,7 @@ def index():
                                     outgoing_error
                                 )
                 except Exception as e:
-                    logging.error(f"Error querying word_file_log: {e}")
+                    logging.error(f"Error querying WO Details: {e}")
                     word_serial_results = []
 
         if 'word_file' in request.files:

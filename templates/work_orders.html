@@ -42,10 +42,10 @@
         </div>
     </section>
     <section class="card mb-3 result-card word-results">
-        <div class="card-header"><h2 class="h5 mb-0">Word documents and serial numbers</h2><span class="result-count">{{ words|length }} documents</span></div>
+        <div class="card-header"><h2 class="h5 mb-0">Work-order details and serial numbers</h2><span class="result-count">{{ words|length }} records</span></div>
         <div class="card-body">
         {% for word in words %}
-            <h3 class="h6"><a class="document-link" href="{{ url_for('work_orders.document', kind='word', record_id=word.id) }}"><span class="file-type">DOCX</span>{{ word.file_name }}</a></h3>
+            <h3 class="h6">{{ word.order_id }}{% if word.get('Document #') %} · {{ word.get('Document #') }}{% endif %} <span class="badge bg-{{ 'secondary' if word.record_source == 'legacy_word' else 'primary' }}">{{ 'Legacy Word history #' ~ word.legacy_word_id if word.record_source == 'legacy_word' else 'MES · Release P' ~ word.release_number }}</span></h3>
             <div class="table-responsive word-table"><table class="table table-bordered">
                 <thead><tr><th>Product</th><th>Quantity</th><th>Serial numbers</th><th>Notes</th></tr></thead>
                 <tbody>{% for item in word.details %}<tr>
@@ -53,7 +53,7 @@
                     <td class="serial-cell">{{ item.get('sn', '') }}</td><td>{{ item.get('notes', '') }}</td>
                 </tr>{% else %}<tr><td colspan="4">No product details available.</td></tr>{% endfor %}</tbody>
             </table></div>
-        {% else %}<p class="mb-0">No Word documents found.</p>{% endfor %}
+        {% else %}<p class="mb-0">No work-order detail records found.</p>{% endfor %}
         {% if words|length == 200 %}<p>Showing the first 200 records. Narrow your search for more specific results.</p>{% endif %}
         </div>
     </section>

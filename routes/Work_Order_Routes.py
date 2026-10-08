@@ -7,6 +7,7 @@ from flask import Blueprint, abort, current_app, render_template, request, send_
 from sqlalchemy import text
 
 from models.models import db
+from functions.wo_lookup import find_work_orders
 from routes.Index_Routes import OUTGOING_DIR, _is_pl_pdf
 
 
@@ -52,7 +53,7 @@ def index():
     if query:
         # Each query has its own connection so one unavailable table does not hide other results.
         pattern = "%" + (digits or query).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
-        for table, destination in (("pdf_file_log", pdfs), ("word_file_log", words)):
+        for table, destination in (("pdf_file_log", pdfs),):
             try:
                 with db.engine.connect() as connection:
                     result = connection.execute(text(
@@ -62,6 +63,11 @@ def index():
             except Exception:
                 current_app.logger.exception("Work order lookup failed: %s", table)
                 errors.append(f"Could not load {'PDF' if table == 'pdf_file_log' else 'Word'} records.")
+        try:
+            words = find_work_orders(pattern)
+        except Exception:
+            current_app.logger.exception('WO Details lookup failed')
+            errors.append('Could not load work-order details.')
         if digits:
             try:
                 with db.engine.connect() as connection:
@@ -93,7 +99,7 @@ def index():
 
 @work_orders_bp.get("/document/<kind>/<int:record_id>")
 def document(kind, record_id):
-    table = {"pdf": "pdf_file_log", "word": "word_file_log"}.get(kind)
+    table = {"pdf": "pdf_file_log"}.get(kind)
     if not table:
         abort(404)
     with db.engine.connect() as connection:

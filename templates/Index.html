@@ -45,20 +45,18 @@
 
         <!-- Used History Lookup -->
         <div class="card mb-3 result-card word-results">
-            <div class="card-header"><h2 class="h5 mb-0">Used History Lookup</h2><span class="result-count">{{ word_serial_results|length }} documents</span></div>
+            <div class="card-header"><h2 class="h5 mb-0">Used History Lookup</h2><span class="result-count">{{ word_serial_results|length }} records</span></div>
             <div class="card-body">
                 {% if word_serial_results %}
                 <ul class="history-list">
                     {% for r in word_serial_results %}
                     <li>
-                        {{ r.file_name }}
-                        {% if r.file_path %}
-                        <a class="document-link" href="{{ url_for('index.word_download', file_path=r.file_path) }}"><span class="file-type">DOCX</span> Download</a>
-                        {% endif %}
-                        {% if r.product_details %}
+                        <strong>{{ r.order_id }}</strong>{% if r.get('Document #') %} · {{ r.get('Document #') }}{% endif %}
+                        <span class="badge bg-{{ 'secondary' if r.record_source == 'legacy_word' else 'primary' }}">{{ 'Legacy Word history #' ~ r.legacy_word_id if r.record_source == 'legacy_word' else 'MES · Release P' ~ r.release_number }}</span>
+                        {% if r.details %}
                         <details class="parsed-data mt-2">
-                            <summary>Raw parsed data</summary>
-                            <pre class="mt-2 mb-0">{{ r.product_details }}</pre>
+                            <summary>Product / quantity / serials / notes</summary>
+                            <div class="table-responsive"><table class="table table-sm table-bordered mt-2"><thead><tr><th>Product</th><th>Quantity</th><th>Serial numbers</th><th>Notes</th></tr></thead><tbody>{% for item in r.details %}<tr><td>{{ item.product_number }}</td><td>{{ item.qty }}</td><td class="serial-cell">{{ item.sn }}</td><td>{{ item.notes }}</td></tr>{% endfor %}</tbody></table></div>
                         </details>
                         {% endif %}
                         {% if r.outgoing_info %}

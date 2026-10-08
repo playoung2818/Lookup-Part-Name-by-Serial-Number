@@ -41,25 +41,6 @@ def create_app(test_config=None):
     app.register_blueprint(work_orders_bp)
     app.register_blueprint(borrow_log_bp)
 
-    @app.route('/api/word-files', methods=['GET'])
-    def get_word_files():
-        try:
-            rows = db.session.execute(
-                text("SELECT * FROM word_file_log")
-            ).mappings().all()
-            word_files_data = [
-                {
-                    "file_name": row.get("file_name"),
-                    "order_id": row.get("order_id"),
-                    "status": "Picked" if row.get("product_details") else "No",
-                    "file_path": row.get("file_path")
-                }
-                for row in rows
-            ]
-            return jsonify({"word_files": word_files_data}), 200
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-
     return app
 
 def main():
