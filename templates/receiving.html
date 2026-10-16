@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Receiving review</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="icon" href="{{ url_for('static', filename='Icon.ico') }}">
+    <link href="{{ url_for('static', filename='erp.css') }}?v=1" rel="stylesheet">
+    <link href="{{ url_for('static', filename='receiving.css') }}" rel="stylesheet">
+    <script src="{{ url_for('static', filename='receiving.js') }}" defer></script>
+</head>
+<body class="bg-light">
+<main class="container py-4">
+    {% include 'brand_header.html' %}
+    {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+    {% if message %}<div class="alert alert-success" role="status">{{ message }}</div>{% endif %}
+    <section class="card mb-3">
+        <div class="card-header"><h2 class="h5 mb-0">Upload receiving workbook</h2></div>
+        <div class="card-body">
+            <p>Upload .xlsx or .xlsm (10 MB / 20,000 worksheet rows maximum). Sheet: <strong>Receiving</strong>. Headers in row 1: <code>Date, Inv#, Box #, POD#, Part#, SN#, QTY</code>.</p>
+            <p>Blank/NA/nan serials and exact repeats are skipped. Dates and parts are required; quantities must be positive (blank defaults to 1). Save formulas as values. Serial matching ignores case and surrounding spaces.</p>
+            <form method="post" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ session.receiving_csrf }}">
+                <label for="file" class="form-label">Receiving workbook</label>
+                <input type="file" id="file" name="file" accept=".xlsx,.xlsm" class="form-control mb-3" required>
+                <button class="btn btn-primary" type="submit">Preview and compare</button>
+            </form>
+        </div>
+    </section>
+    {% if new_count is defined %}
+    <section class="card">
+        <div class="card-header"><h2 class="h5 mb-0">Change review — nothing saved yet</h2></div>
+        <div class="card-body">
+            <p><strong>{{ new_count }}</strong> new serials; <strong>{{ conflict_count }}</strong> serials to review; <strong>{{ skipped }}</strong> blank/placeholder or exact repeat rows skipped; <strong>{{ error_count }}</strong> validation errors.</p>
+            {% if errors %}
+            <div class="alert alert-danger" role="alert"><strong>Import blocked. Correct invalid Excel rows and upload again.</strong>
+                <ul>{% for item in errors %}<li>{{ item }}</li>{% endfor %}</ul>
+                {% if error_count > 100 %}<p>Showing the first 100 validation errors. All conflict groups are shown below.</p>{% endif %}
+            </div>
+            {% endif %}
+            {% if review %}
+            <p>Expand a serial to compare every database and uploaded version. Yellow cells differ from the first database row (or first uploaded row for new serials). Conflicts default to <strong>Leave unchanged</strong>; new serials default to the uploaded row.</p>
+            <div class="alert alert-info"><strong>A serial may have multiple legitimate receipts, such as an original purchase and an RMA return.</strong> Choose <strong>Keep history / add new events</strong> to preserve every database record and add only uploaded events not already recorded. Exact event matches (date, invoice, box, POD, part, serial, quantity) are skipped.</div>
+            <div class="alert alert-warning">The individual <strong>Keep DB</strong> / <strong>Keep Excel</strong> choices are replacement/cleanup actions: they keep only one row and may delete other database records. Do not use these to preserve RMA history. <strong>Leave unchanged</strong> preserves all existing rows but imports nothing for this serial.</div>
+            <label for="review-search" class="form-label">Filter serial tree</label>
+            <input id="review-search" class="form-control mb-2" type="search" placeholder="Search serial…">
+            <div class="d-flex gap-2 mb-3 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="expand-review">Expand visible</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="collapse-review">Collapse all</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="skip-review">Leave all groups unchanged</button>
+                <span id="review-count" aria-live="polite"></span>
+            </div>
+            <form method="post" id="review-form">
+                <input type="hidden" name="csrf_token" value="{{ session.receiving_csrf }}">
+                <input type="hidden" name="action" value="import">
+                {% if preview_token %}<input type="hidden" name="preview_token" value="{{ preview_token }}">{% endif %}
+                <div class="review-tree">
+                {% for group in review %}
+                {% set index = loop.index0 %}
+                <details class="serial-group" data-serial="{{ group.key }}">
+                    <summary><span class="badge {{ 'bg-warning text-dark' if group.kind == 'conflict' else 'bg-success' }}">{{ 'Review' if group.kind == 'conflict' else 'New' }}</span> <strong>{{ group.key }}</strong> <span class="text-muted">— {{ group.existing|length }} database / {{ group.uploaded|length }} uploaded versions</span> <span class="choice-status"></span></summary>
+                    <div class="serial-body">
+                        <label class="mb-2"><input type="radio" name="choice_{{ index }}" value="skip" {% if group.kind == 'conflict' %}checked{% endif %}> Leave unchanged — no import or deletion for this serial</label>
+                        <label class="d-block mb-2"><input type="radio" name="choice_{{ index }}" value="history"> Keep history / add new events — preserve ALL database rows; skip exact event matches</label>
+                        <div class="table-responsive"><table class="table table-sm table-bordered diff-table">
+                            <thead><tr><th>Keep this version</th>{% for field in fields %}<th>{{ field.replace('_', ' ') }}</th>{% endfor %}<th>Other database fields (preserved only on survivor)</th></tr></thead>
+                            <tbody>
+                            {% for row in group.existing %}
+                            <tr data-source="db"><th><label><input type="radio" name="choice_{{ index }}" value="db:{{ row.id }}"> Keep DB #{{ row.id }}</label><span class="row-effect"></span></th>
+                                {% for field in fields %}<td data-field="{{ field }}">{{ row[field] if row[field] is not none else '' }}</td>{% endfor %}
+                                <td>{% for key, value in row.items() if key not in fields and key != 'id' %}<div><strong>{{ key }}:</strong> {{ value if value is not none else '' }}</div>{% endfor %}</td>
+                            </tr>
+                            {% endfor %}
+                            {% for row in group.uploaded %}
+                            <tr data-source="upload" data-history-new="{{ 'yes' if row.get('_history_new', true) else 'no' }}"><th><label><input type="radio" name="choice_{{ index }}" value="upload:{{ loop.index0 }}" {% if group.kind == 'new' %}checked{% endif %}> Keep Excel row {{ row._row }}</label><span class="row-effect"></span></th>
+                                {% for field in fields %}<td data-field="{{ field }}">{{ row[field] }}</td>{% endfor %}<td>Not supplied by workbook</td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table></div>
+                    </div>
+                </details>
+                {% endfor %}
+                </div>
+                {% if preview_token %}
+                <div class="review-confirm mt-3">
+                    <p id="change-summary" aria-live="polite"></p>
+                    <label class="d-block mb-3"><input type="checkbox" name="allow_delete" value="yes"> I authorize deleting the database rows marked DELETE for my selected serials. I have reviewed their data and have a backup.</label>
+                    <p>Confirm within 30 minutes. Selected serials are rechecked under a database write lock. If any selected serial changed since preview, the entire transaction is cancelled.</p>
+                    <button class="btn btn-success" type="submit">Apply selected changes</button>
+                </div>
+                {% endif %}
+            </form>
+            {% elif not errors %}<p>Everything already matches. No changes needed.</p>{% endif %}
+        </div>
+    </section>
+    {% endif %}
+</main>
+</body>
+</html>

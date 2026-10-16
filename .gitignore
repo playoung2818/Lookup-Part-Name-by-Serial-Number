@@ -1,0 +1,12 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Python generated files (may contain cached configuration values)
+__pycache__/
+*.py[cod]
+
+# Local virtual environments
+.venv/
+venv/

@@ -1,0 +1,16 @@
+.review-tree { border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; }
+.serial-group + .serial-group { border-top: 1px solid #cbd5e1; }
+.serial-group summary { padding: .85rem; cursor: pointer; background: #f6f8fa; overflow-wrap: anywhere; }
+.serial-group summary:hover { background: #eaf0f6; }
+.serial-body { padding: 1rem; border-left: 3px solid #94a3b8; }
+.diff-table { font-family: ui-monospace, Consolas, monospace; font-size: .82rem; }
+.diff-table td { min-width: 100px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.diff-table th:first-child { min-width: 185px; }
+.diff-table td.diff-changed { background: #fff1b8; box-shadow: inset 3px 0 #d4a72c; }
+.row-effect { display: block; font-size: .7rem; margin-top: .4rem; color: #57606a; }
+.will-delete .row-effect { color: #b42318; font-weight: bold; }
+.will-delete th { background: #ffebe9; }
+.will-keep th { background: #dafbe1; }
+.choice-status { display: inline-block; font-size: .8rem; padding-left: .5rem; color: #0969da; }
+.review-confirm { border: 1px solid #cbd5e1; border-radius: 6px; background: #f6f8fa; padding: 1rem; }
+#change-summary { font-weight: 600; }

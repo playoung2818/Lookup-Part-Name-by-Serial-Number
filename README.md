@@ -13,7 +13,22 @@ no separate API process is needed.
 The API is available at `http://127.0.0.1:5000/api/word-files` and
 `http://localhost:5000/api/word-files`.
 The API reads existing records from `word_file_log`; importing Word files is
-handled separately. Set `DATABASE_DSN` to override the database connection.
+handled separately.
+
+## Local configuration (not committed)
+
+1. Install dotenv support: `python -m pip install python-dotenv`.
+2. Copy `.env.example` to `.env` in the project root.
+3. Fill in `DATABASE_DSN`, a securely generated `SECRET_KEY`, and `MRP_BASE_URL`.
+   URL-encode special characters in database usernames/passwords.
+4. Run `python app.py` as usual. `config.py` loads `.env` automatically;
+   existing process environment variables take precedence.
+
+`.env` and Python cache files are ignored by Git. Commit `config.py` and
+`.env.example`, which contain no real credentials. A database connection must
+be supplied; there is no hardcoded credential fallback. If a real password was
+previously committed or pushed, rotate it: ignoring `.env` does not remove old
+credentials from Git history.
 
 ---
 

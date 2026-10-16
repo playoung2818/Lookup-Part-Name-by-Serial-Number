@@ -21,6 +21,8 @@ from routes.Index_Routes import index_bp
 from routes.Api_Routes import api_bp
 from routes.Work_Order_Routes import work_orders_bp
 from routes.Borrow_Log_Routes import borrow_log_bp
+from routes.Inventory_Count_Routes import inventory_count_bp
+from routes.Receiving_Routes import receiving_bp
 
 def create_app(test_config=None):
     """Application factory — makes testing & deployment easier."""
@@ -40,6 +42,10 @@ def create_app(test_config=None):
     app.register_blueprint(api_bp, url_prefix="/api")
     app.register_blueprint(work_orders_bp)
     app.register_blueprint(borrow_log_bp)
+    app.register_blueprint(inventory_count_bp)
+    app.register_blueprint(receiving_bp)
+    # Signed preview forms can exceed Flask's default 500 KB field limit.
+    app.config['MAX_FORM_MEMORY_SIZE'] = 10 * 1024 * 1024
 
     return app
 
