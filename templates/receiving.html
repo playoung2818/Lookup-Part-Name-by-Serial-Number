@@ -19,7 +19,7 @@
         <div class="card-header"><h2 class="h5 mb-0">Upload receiving workbook</h2></div>
         <div class="card-body">
             <p>Upload .xlsx or .xlsm (10 MB / 20,000 worksheet rows maximum). The <strong>first worksheet</strong> is imported, regardless of its name. Headers in row 1: <code>Date, Inv#, Box #, POD#, Part#, SN#, QTY</code>.</p>
-            <p>Blank/NA/nan serials and exact repeats are skipped. Dates and parts are required; quantities must be positive (blank defaults to 1). Save formulas as values. Serial matching ignores case and surrounding spaces.</p>
+            <p>Blank/nan serials and exact repeats are skipped. NA serials are imported as separate receipts matched by their full receiving details. Dates and parts are required; quantities must be positive (blank defaults to 1). Save formulas as values. Serial matching ignores case and surrounding spaces.</p>
             <form method="post" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="{{ session.receiving_csrf }}">
                 <label for="file" class="form-label">Receiving workbook</label>

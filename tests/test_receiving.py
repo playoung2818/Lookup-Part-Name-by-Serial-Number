@@ -46,7 +46,9 @@ class ReceivingValidationTests(unittest.TestCase):
     def test_read_trim_placeholders_default_quantity(self):
         result, errors, skipped = read_upload(workbook([excel_row(' SN-1 ', None), excel_row('NA'), excel_row('nan'), excel_row('')]))
         self.assertEqual(errors, [])
-        self.assertEqual(skipped, 3)
+        self.assertEqual(skipped, 2)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[1]['serial_number'], 'NA')
         self.assertEqual(result[0]['serial_number'], 'SN-1')
         self.assertEqual(result[0]['quantity'], 1)
         self.assertEqual(result[0]['entry_date'], '2026-10-08')
@@ -214,6 +216,37 @@ class ReceivingReviewTests(unittest.TestCase):
     def apply(self, choice, allow=False, current=None):
         with patch('functions.receiving_import.receiving_table', return_value=table()), patch('functions.receiving_import.database_groups', return_value={'SN-1': self.db_rows if current is None else current}):
             return apply_review(self.engine, [self.group], {'0': choice}, allow)
+
+    def test_na_receipts_are_independent_and_exact_reuploads_are_skipped(self):
+        uploaded = records(excel_row('NA'), excel_row(' na ', qty=2))
+        existing = [dict(uploaded[0], id=10)]
+        review, skipped = build_review(connection_with(existing), table(), uploaded)
+        self.assertEqual(skipped, 1)
+        self.assertEqual(len(review), 1)
+        self.assertEqual(review[0]['kind'], 'new')
+        self.assertEqual(review[0]['existing'], [])
+        self.assertEqual(review[0]['uploaded'][0]['quantity'], 2)
+        pending, errors, skipped = classify(connection_with(existing), table(), uploaded)
+        self.assertEqual((len(pending), errors, skipped), (1, [], 1))
+        # Apply against real grouping logic (mock only DB reads/writes).
+        self.connection.execute.return_value.mappings.return_value = existing
+        with patch('functions.receiving_import.receiving_table', return_value=table()):
+            result = apply_review(self.engine, review, {'0': 'upload:0'})
+        self.assertEqual((result['inserted'], result['updated'], result['deleted']), (1, 0, 0))
+        # Once both receipts exist, reuploading adds nothing.
+        existing.append(dict(uploaded[1], id=11))
+        review, skipped = build_review(connection_with(existing), table(), uploaded)
+        self.assertEqual((review, skipped), ([], 2))
+
+    def test_distinct_na_items_do_not_share_a_review_group(self):
+        first = excel_row('NA')
+        second = excel_row('NA')
+        second[4] = 'ANOTHER-PART'
+        review, skipped = build_review(connection_with([]), table(), records(first, second, first))
+        self.assertEqual(len(review), 2)
+        self.assertEqual(skipped, 1)
+        self.assertNotEqual(review[0]['key'], review[1]['key'])
+        self.assertTrue(all(group['kind'] == 'new' for group in review))
 
     def test_existing_duplicates_become_review_not_errors(self):
         review, skipped = build_review(connection_with(self.db_rows), table(), self.uploaded * 2)

@@ -50,7 +50,7 @@ def read_upload(content):
                 raise ValueError('Upload at most 20,000 worksheet rows at a time.')
             row = {key: values[index] if index < len(values) else None for key, index in positions.items()}
             serial = serial_key(row['serial_number'])
-            if serial in ('', 'NA', 'NAN'):
+            if serial in ('', 'NAN'):
                 skipped += 1
                 continue
             problems = []
@@ -99,6 +99,16 @@ def signature(row):
     return (day, *(serial_key(row[key]) if key == 'serial_number' else clean(row[key]) for key in STRINGS), row['quantity'])
 
 
+def receipt_key(row):
+    """NA is not an identity: match non-serialized receipts by full event."""
+    key = serial_key(row['serial_number'])
+    if key == 'NA':
+        event = (*signature(row)[:-1], float(row['quantity']))
+        digest = hashlib.sha256(json.dumps(event).encode()).hexdigest()
+        return f'NA receipt:{digest}'
+    return key
+
+
 def receiving_table(connection):
     # Reflection intentionally requires an existing table; never creates schema.
     table = Table('receiving_log', MetaData(), autoload_with=connection)
@@ -110,12 +120,12 @@ def receiving_table(connection):
 def classify(connection, table, records):
     existing = {}
     for row in connection.execute(select(*(table.c[key] for key in KEYS))).mappings():
-        key = serial_key(row['serial_number'])
-        if key not in ('', 'NA', 'NAN'):
+        key = receipt_key(row)
+        if key not in ('', 'NAN'):
             existing.setdefault(key, []).append(row)
     pending, seen, errors, skipped = [], {}, [], 0
     for row in records:
-        key = serial_key(row['serial_number'])
+        key = receipt_key(row)
         if key in seen:
             if signature(seen[key]) == signature(row):
                 skipped += 1
@@ -184,8 +194,8 @@ def database_groups(connection, table):
         if row['id'] is None or row['id'] in ids:
             raise ValueError('receiving_log.id must contain unique, non-null IDs for safe review.')
         ids.add(row['id'])
-        key = serial_key(row['serial_number'])
-        if key not in ('', 'NA', 'NAN'):
+        key = receipt_key(row)
+        if key not in ('', 'NAN'):
             groups.setdefault(key, []).append(row)
     return groups
 
@@ -195,7 +205,7 @@ def build_review(connection, table, records):
     uploaded = {}
     skipped = 0
     for row in records:
-        candidates = uploaded.setdefault(serial_key(row['serial_number']), [])
+        candidates = uploaded.setdefault(receipt_key(row), [])
         if any(signature(candidate) == signature(row) for candidate in candidates):
             skipped += 1
         else:
