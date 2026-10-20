@@ -4,7 +4,7 @@ Open **Receiving** (`/receiving`). Upload the workbook, review an expandable ser
 
 ## Workbook requirements
 
-- `.xlsx` or `.xlsm`, worksheet `Receiving`.
+- `.xlsx` or `.xlsm`; the first worksheet is imported regardless of its name.
 - First-row headers: `Date`, `Inv#`, `Box #`, `POD#`, `Part#`, `SN#`, `QTY`. Surrounding header whitespace is ignored.
 - Maximum 10 MB request, 100 MB uncompressed workbook, 20,000 worksheet rows.
 - Blank, `NA`, and `nan` serials are skipped (case-insensitive).

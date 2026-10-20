@@ -35,15 +35,15 @@ def read_upload(content):
     except (BadZipFile, KeyError, OSError) as exc:
         raise ValueError('Upload a valid .xlsx or .xlsm workbook.') from exc
     try:
-        if 'Receiving' not in workbook.sheetnames:
-            raise ValueError("Workbook must contain a 'Receiving' sheet.")
-        sheet = workbook['Receiving']
+        if not workbook.worksheets:
+            raise ValueError('Workbook must contain at least one worksheet.')
+        sheet = workbook.worksheets[0]
         rows = sheet.iter_rows(values_only=True)
-        headers = [clean(v) for v in next(rows, ())]
+        headers = [clean(v).casefold() for v in next(rows, ())]
         for header in COLUMNS:
-            if headers.count(header) != 1:
+            if headers.count(header.casefold()) != 1:
                 raise ValueError(f"Expected exactly one '{header}' column in the first row.")
-        positions = {key: headers.index(header) for header, key in COLUMNS.items()}
+        positions = {key: headers.index(header.casefold()) for header, key in COLUMNS.items()}
         records, errors, skipped = [], [], 0
         for number, values in enumerate(rows, 2):
             if number > 20001:

@@ -60,10 +60,41 @@ class ReceivingValidationTests(unittest.TestCase):
         row[4] = ''
         self.assertEqual(len(read_upload(workbook([row]))[1]), 1)
 
-    def test_missing_sheet_or_header(self):
-        for content in [workbook([], sheet='Other'), workbook([], headers=['SN#'])]:
-            with self.assertRaises(ValueError):
-                read_upload(content)
+    def test_first_worksheet_can_have_any_name(self):
+        result, errors, skipped = read_upload(workbook([excel_row()], sheet='Sheet1'))
+        self.assertEqual(len(result), 1)
+        self.assertEqual(errors, [])
+
+    def test_first_worksheet_is_used_not_named_receiving_or_active_sheet(self):
+        book = Workbook()
+        book.active.title = 'First'
+        book.active.append(['Date', 'Inv#', 'Box #', 'POD#', 'Part#', 'SN#', 'QTY'])
+        book.active.append(excel_row('FIRST-SN'))
+        second = book.create_sheet('Receiving')
+        second.append(['Wrong headers'])
+        book.active = 1
+        output = io.BytesIO()
+        book.save(output)
+        book.close()
+        result, errors, skipped = read_upload(output.getvalue())
+        self.assertEqual(result[0]['serial_number'], 'FIRST-SN')
+        self.assertEqual(errors, [])
+
+    def test_headers_are_case_insensitive_and_extra_columns_allowed(self):
+        headers = ['Date', 'INV#', 'Box #', 'POD#', 'Part#', 'SN#', 'Qty', 'Reference', 'Column1']
+        result, errors, skipped = read_upload(workbook([excel_row()], headers=headers))
+        self.assertEqual(errors, [])
+        self.assertEqual(result[0]['invoice_number'], 'INV-1')
+        self.assertEqual(result[0]['quantity'], 1)
+
+    def test_duplicate_header_with_different_case_is_rejected(self):
+        headers = ['Date', 'Inv#', 'Box #', 'POD#', 'Part#', 'SN#', 'QTY', 'INV#']
+        with self.assertRaisesRegex(ValueError, "exactly one 'Inv#'"):
+            read_upload(workbook([], headers=headers))
+
+    def test_missing_header_still_rejected(self):
+        with self.assertRaises(ValueError):
+            read_upload(workbook([], headers=['SN#']))
 
     def test_exact_upload_duplicates_and_case_normalization(self):
         rows = records(excel_row(), excel_row(' sn-1 '))
