@@ -15,6 +15,19 @@
     {% include 'search_bars.html' %}
     {% for error in errors %}<div class="alert alert-warning">{{ error }}</div>{% endfor %}
     {% if query %}
+    {% if digits %}
+    <p class="mb-3" aria-label="SO workflow status">
+        {% if workflow_error %}
+            <span class="text-muted">{{ workflow_error }}</span>
+        {% elif workflow %}
+            <strong>Owner:</strong> {{ workflow.owner }}
+            <span class="mx-2">·</span><strong>Workflow status:</strong> {{ workflow.status_label }}
+            {% if workflow.system_url %}<span class="mx-2">·</span><a href="{{ workflow.system_url }}" target="_blank" rel="noopener">Open in {{ workflow.owner }} ↗</a>{% endif %}
+        {% else %}
+            <span class="text-muted">No stored workflow record found for SO-{{ digits }}.</span>
+        {% endif %}
+    </p>
+    {% endif %}
     <section class="card mb-3 result-card outgoing-results">
         <div class="card-header"><h2 class="h5 mb-0">Outgoing PDFs{% if digits %} — SO-{{ digits }}{% endif %}</h2></div>
         <div class="card-body">

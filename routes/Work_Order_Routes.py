@@ -2,12 +2,14 @@
 import json
 import os
 import re
+from urllib.parse import quote
 
 from flask import Blueprint, abort, current_app, render_template, request, send_file
 from sqlalchemy import text
 
 from models.models import db
 from functions.wo_lookup import find_work_orders
+from functions.so_status import find_so_status
 from routes.Index_Routes import OUTGOING_DIR, _is_pl_pdf
 
 
@@ -50,6 +52,19 @@ def index():
     query = (request.form if request.method == "POST" else request.args).get("q", "").strip()
     pdfs, words, outgoing, errors = [], [], [], []
     digits = order_digits(query)
+    workflow, workflow_error = None, None
+    if digits:
+        try:
+            workflow = find_so_status(f'SO-{digits}')
+            if workflow:
+                owner = workflow['owner']
+                if owner in ('MRP', 'MES'):
+                    base = current_app.config[f'{owner}_BASE_URL'].rstrip('/')
+                    path = '/sales_orders/' if owner == 'MRP' else '/so/'
+                    workflow['system_url'] = base + path + quote(workflow['sales_order'], safe='')
+        except Exception:
+            current_app.logger.exception('SO workflow status lookup failed')
+            workflow_error = 'Workflow status is unavailable. Other lookup results are shown below.'
     if query:
         # Each query has its own connection so one unavailable table does not hide other results.
         pattern = "%" + (digits or query).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
@@ -94,7 +109,8 @@ def index():
             except (TypeError, ValueError):
                 word["details"] = []
     return render_template("work_orders.html", query=query, digits=digits, pdfs=pdfs,
-                           words=words, outgoing=outgoing, errors=errors)
+                           words=words, outgoing=outgoing, errors=errors,
+                           workflow=workflow, workflow_error=workflow_error)
 
 
 @work_orders_bp.get("/document/<kind>/<int:record_id>")

@@ -13,5 +13,6 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_DSN')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     LOG_LEVEL = logging.INFO
-    MRP_BASE_URL = os.getenv('MRP_BASE_URL', 'http://127.0.0.1:5002')
+    MRP_BASE_URL = os.getenv('MRP_BASE_URL', 'http://192.168.60.215:5002')
+    MES_BASE_URL = os.getenv('MES_BASE_URL', 'http://192.168.60.215:5001')
 

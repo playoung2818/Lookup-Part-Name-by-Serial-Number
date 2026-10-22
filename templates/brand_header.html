@@ -12,6 +12,8 @@
     <nav class="sidebar-nav" aria-label="Modules">
         <a class="{{ 'active' if not borrow_mode and not so_mode and not inventory_mode and not receiving_mode else '' }}" {% if not borrow_mode and not so_mode and not inventory_mode and not receiving_mode %}aria-current="page"{% endif %} href="{{ url_for('index.index') }}">{{ nav_icon('serial') }}<span>Serial number search</span></a>
         <a class="{{ 'active' if so_mode else '' }}" {% if so_mode %}aria-current="page"{% endif %} href="{{ url_for('work_orders.index') }}">{{ nav_icon('orders') }}<span>SO number search</span></a>
+    </nav>
+    <nav class="sidebar-nav sidebar-nav-bottom" aria-label="Warehouse modules">
         <a class="{{ 'active' if borrow_mode else '' }}" {% if borrow_mode %}aria-current="page"{% endif %} href="{{ url_for('borrow_log.index') }}">{{ nav_icon('borrow') }}<span>Warehouse Borrow Log</span></a>
         <a class="{{ 'active' if inventory_mode else '' }}" {% if inventory_mode %}aria-current="page"{% endif %} href="{{ url_for('inventory_count.index') }}">{{ nav_icon('inventory') }}<span>Inventory count</span></a>
         <a class="{{ 'active' if receiving_mode else '' }}" {% if receiving_mode %}aria-current="page"{% endif %} href="{{ url_for('receiving.index') }}">{{ nav_icon('receiving') }}<span>Receiving</span></a>
