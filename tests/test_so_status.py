@@ -22,6 +22,8 @@ class SOStatusTests(unittest.TestCase):
             statement, params = connection.execute.call_args.args
             self.assertEqual(params, {'so_number': 'SO-20261511'})
             sql = str(statement)
+            self.assertIn('FROM public.sales_order_workflow a', sql)
+            self.assertNotIn('approved_work_orders', sql)
             self.assertIn('LEFT JOIN public.production_overrides', sql)
             self.assertIn("to_jsonb(a) ->> 'source_present'", sql)
             self.assertIn("to_jsonb(a) ->> 'google_present'", sql)

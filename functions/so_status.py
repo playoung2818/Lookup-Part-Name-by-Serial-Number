@@ -29,7 +29,7 @@ def find_so_status(so_number):
                    ) AS missing_source,
                    a.reconciliation_required,
                    p.production_date, p.is_finished_goods
-            FROM public.approved_work_orders a
+            FROM public.sales_order_workflow a
             LEFT JOIN public.production_overrides p ON p.wo_number = a.sales_order
             WHERE a.sales_order = :so_number
         '''), {'so_number': so_number}).mappings().first()
