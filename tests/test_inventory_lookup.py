@@ -36,12 +36,47 @@ class InventoryLookupTests(unittest.TestCase):
         self.assertEqual(get.call_args.kwargs['params'], {'item':'RAM'})
         self.assertEqual(self.client.post('/inventory_count', data={}).status_code, 405)
 
+    def test_home_opens_all_inventory(self):
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.location, '/inventory-count')
+        with patch('routes.Inventory_Count_Routes.requests.get', return_value=self.response()) as get:
+            response = self.client.get('/', follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Inventory status', response.data)
+        self.assertIn(b'item=RAM', response.data)
+        self.assertEqual(get.call_args.kwargs['params'], {'item': ''})
+
     def test_initial_page_lists_items(self):
         with patch('routes.Inventory_Count_Routes.requests.get', return_value=self.response()):
             response = self.client.get('/inventory_count')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Inventory status', response.data)
         self.assertIn(b'item=RAM', response.data)
+
+    def test_operational_quantity_columns_are_hidden(self):
+        hidden = ['Awaiting Pick Qty', 'Physically Shipped Qty', 'Source Outstanding Qty']
+        data = payload()
+        data['so_columns'].extend(['Picked (WIP)', 'On Hand - WIP'])
+        data['so_rows'][0].update({'Picked (WIP)': 'WIP_VISIBLE', 'On Hand - WIP': 'SO_STOCK_HIDDEN'})
+        for prefix in ['so', 'inv_status']:
+            data[prefix + '_columns'].extend(hidden)
+            data[prefix + '_rows'][0].update({column: 'HIDDEN_VALUE' for column in hidden})
+        with patch('routes.Inventory_Count_Routes.requests.get', return_value=self.response(data)):
+            for url in ['/inventory_count', '/inventory_count?item=RAM']:
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                for column in hidden:
+                    self.assertNotIn(column.encode(), response.data)
+                self.assertNotIn(b'HIDDEN_VALUE', response.data)
+                self.assertIn(b'RAM', response.data)
+                if 'item=' in url:
+                    self.assertIn(b'<th scope="col">Picked (WIP)</th>', response.data)
+                    self.assertIn(b'WIP_VISIBLE', response.data)
+                    self.assertNotIn(b'<th scope="col">On Hand - WIP</th>', response.data)
+                    self.assertNotIn(b'SO_STOCK_HIDDEN', response.data)
+                else:
+                    self.assertIn(b'<th scope="col">On Hand - WIP</th>', response.data)
 
     def test_reload_preserves_item_and_requests_mrp_refresh(self):
         with patch('routes.Inventory_Count_Routes.requests.get', return_value=self.response()) as get:
@@ -84,10 +119,15 @@ class InventoryLookupTests(unittest.TestCase):
         with patch('routes.Inventory_Count_Routes.requests.get', return_value=self.response(data)):
             self.assertEqual(self.client.get('/inventory_count?item=RAM').status_code, 503)
 
-    def test_navigation_has_inventory_page(self):
+    def test_inventory_search_and_reload_stay_outside_sidebar(self):
         with patch('routes.Inventory_Count_Routes.requests.get', return_value=self.response()):
             response = self.client.get('/inventory_count')
-        self.assertIn(b'Inventory count</span>', response.data)
+        sidebar = response.data.split(b'<aside class="app-sidebar"', 1)[1].split(b'</aside>', 1)[0]
+        self.assertNotIn(b'Reload MRP data', sidebar)
+        self.assertNotIn(b'name="item"', sidebar)
+        self.assertIn(b'Reload MRP data', response.data)
+        self.assertIn(b'name="item"', response.data)
+        self.assertNotIn(b'Inventory count</span>', response.data)
 
 
 if __name__ == '__main__':

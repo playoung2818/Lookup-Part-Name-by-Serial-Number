@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, abort, send_file
+from flask import Blueprint, render_template, request, jsonify, abort, send_file, redirect, url_for
 import json
 import glob
 import re
@@ -126,8 +126,23 @@ def _order_lookup_variants(order_id):
         variants.append(f"SO-{match.group(1)}")
     return variants
 
+@index_bp.get('/lookup')
+def lookup():
+    query = request.args.get('q', '').strip()
+    if not query:
+        return redirect(url_for('index.index'))
+    if len(query) > 255:
+        abort(400)
+    order = re.fullmatch(r'(?:(?:SO\s*-?\s*)|(?:WO\d{2}\s*-\s*))?(\d{8})', query, re.I)
+    if order:
+        return redirect(url_for('work_orders.index', q=f'SO-{order.group(1)}'))
+    return redirect(url_for('index.index', serial_number=query))
+
+
 @index_bp.route('/', methods=['GET', 'POST'])
 def index():
+    if request.method == 'GET' and 'serial_number' not in request.args:
+        return redirect(url_for('inventory_count.index'))
     serial_number = ""
     part_name = ""
     entry_date = ""
@@ -144,9 +159,10 @@ def index():
     refresh_status = request.args.get('refresh_status')
     refresh_message = request.args.get('refresh_message')
 
-    if request.method == 'POST':
-        if 'serial_number' in request.form:
-            serial_number = request.form.get('serial_number', '').strip()
+    lookup_data = request.form if request.method == 'POST' else request.args
+    if request.method == 'POST' or 'serial_number' in request.args:
+        if 'serial_number' in lookup_data:
+            serial_number = lookup_data.get('serial_number', '').strip()
             if serial_number:
                 try:
                     found_entry = ReceivingLog.query.filter_by(serial_number=serial_number).first()
@@ -165,8 +181,8 @@ def index():
                     message = "Error occurred during lookup."
                     found = False
 
-        if 'prune_input' in request.form:
-            prune_input = request.form.get('prune_input', '').strip()
+        if request.method == 'POST' and 'prune_input' in lookup_data:
+            prune_input = lookup_data.get('prune_input', '').strip()
             if prune_input:
                 try:
                     raw_serials = re.split(r'[,\n]+', prune_input)
@@ -176,8 +192,8 @@ def index():
                     logging.error(f"Error pruning serial numbers: {e}")
                     pruned_serials_text = "Error occurred during pruning."
 
-        if 'word_serial_query' in request.form or 'serial_number' in request.form:
-            word_serial_query = request.form.get('serial_number', request.form.get('word_serial_query', '')).strip()
+        if 'word_serial_query' in lookup_data or 'serial_number' in lookup_data:
+            word_serial_query = lookup_data.get('serial_number', lookup_data.get('word_serial_query', '')).strip()
             if word_serial_query:
                 try:
                     search_variants = sorted(_serial_variants(word_serial_query), key=len, reverse=True)

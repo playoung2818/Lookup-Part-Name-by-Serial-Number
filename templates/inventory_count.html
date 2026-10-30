@@ -1,4 +1,7 @@
 {% macro inventory_table(title, columns, rows, source, empty_message) %}
+{% set hidden_columns = ['Awaiting Pick Qty', 'Physically Shipped Qty', 'Source Outstanding Qty'] %}
+{% if title == 'On sales order' %}{% set hidden_columns = hidden_columns + ['On Hand - WIP', 'On Hand − WIP', 'On Hand -WIP'] %}{% endif %}
+{% set columns = columns | reject('in', hidden_columns) | list %}
 <section class="card result-card mb-3">
   <div class="card-header"><h2 class="h5 mb-0">{{ title }}</h2><span class="result-count">{{ rows|length }} rows</span></div>
   <div class="card-body">
