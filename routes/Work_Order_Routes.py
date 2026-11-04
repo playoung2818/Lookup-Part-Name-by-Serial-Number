@@ -81,14 +81,14 @@ def index():
         try:
             words = find_work_orders(pattern)
         except Exception:
-            current_app.logger.exception('WO Details lookup failed')
+            current_app.logger.exception('wo_details lookup failed')
             errors.append('Could not load work-order details.')
         if digits:
             try:
                 with db.engine.connect() as connection:
                     result = connection.execute(text('''
                         SELECT DISTINCT "WO/SO #", "Customer", "Invoice#", "Outgoing Form#", "Invoice Date"
-                        FROM public.combined_wo_outgoing_form_filing
+                        FROM public.outgoing_records
                         WHERE "WO/SO #" ~* :pattern
                         ORDER BY "Outgoing Form#", "Invoice#"
                     '''), {"pattern": r"(^|[^A-Za-z0-9])SO[[:space:]]*-[[:space:]]*" + digits + r"([^A-Za-z0-9]|$)"}).mappings()

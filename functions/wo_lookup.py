@@ -1,4 +1,4 @@
-"""Read MES and historical detail records from the shared WO Details table."""
+"""Read MES and historical detail records from the shared wo_details table."""
 import json
 from sqlalchemy import text
 from models.models import db
@@ -24,7 +24,7 @@ def display_record(row):
 
 def find_work_orders(pattern):
     with db.engine.connect() as connection:
-        rows = connection.execute(text('''SELECT * FROM "WO Details"
+        rows = connection.execute(text('''SELECT * FROM wo_details
             WHERE sales_order ILIKE :pattern OR "Document #" ILIKE :pattern
                OR CAST(items AS text) ILIKE :pattern
             ORDER BY CASE WHEN record_source = 'mes' THEN 0 ELSE 1 END,
@@ -42,5 +42,5 @@ def find_by_serial(variants):
     if not clauses:
         return []
     with db.engine.connect() as connection:
-        rows = connection.execute(text('SELECT * FROM "WO Details" WHERE (' + ' OR '.join(clauses) + ") ORDER BY CASE WHEN record_source = 'mes' THEN 0 ELSE 1 END, sales_order DESC, release_number DESC").bindparams(**params)).mappings().all()
+        rows = connection.execute(text('SELECT * FROM wo_details WHERE (' + ' OR '.join(clauses) + ") ORDER BY CASE WHEN record_source = 'mes' THEN 0 ELSE 1 END, sales_order DESC, release_number DESC").bindparams(**params)).mappings().all()
     return [display_record(row) for row in rows]

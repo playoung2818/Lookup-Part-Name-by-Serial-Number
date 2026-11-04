@@ -258,7 +258,7 @@ def index():
                                 sql = (
                                     "SELECT \"WO/SO #\", \"Customer\", \"Invoice#\", "
                                     "\"Outgoing Form#\", \"Invoice Date\" "
-                                    "FROM public.combined_wo_outgoing_form_filing "
+                                    "FROM public.outgoing_records "
                                     f"WHERE {' OR '.join(where_clauses)}"
                                 )
                                 outgoing_rows = ReceivingLog.query.session.execute(
@@ -272,7 +272,7 @@ def index():
                                     outgoing_error
                                 )
                 except Exception as e:
-                    logging.error(f"Error querying WO Details: {e}")
+                    logging.error(f"Error querying wo_details: {e}")
                     word_serial_results = []
 
         if 'word_file' in request.files:

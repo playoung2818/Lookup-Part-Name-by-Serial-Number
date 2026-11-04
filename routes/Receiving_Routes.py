@@ -43,7 +43,7 @@ def index():
                     raise ValueError('Preview expired or invalid. Upload the workbook again.') from exc
                 if payload.get('csrf') != csrf:
                     abort(400)
-                if payload.get('version') != 2:
+                if payload.get('version') != 3:
                     raise ValueError('Please upload again to use the new conflict review.')
                 counts = apply_review(db.engine, payload['review'],
                                       {str(i): request.form.get(f'choice_{i}', 'skip') for i in range(len(payload['review']))},
@@ -65,7 +65,7 @@ def index():
                                skipped=blank_count + duplicate_count)
                 if not errors and review:
                     signed_review = [{k: v for k, v in group.items() if k != 'existing'} for group in review]
-                    context['preview_token'] = signer().dumps({'version': 2, 'csrf': csrf, 'review': signed_review})
+                    context['preview_token'] = signer().dumps({'version': 3, 'csrf': csrf, 'review': signed_review})
         except ValueError as exc:
             context['error'] = str(exc)
             status = 400

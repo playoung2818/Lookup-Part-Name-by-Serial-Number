@@ -7,7 +7,7 @@ Open **Receiving** (`/receiving`). Upload the workbook, review an expandable ser
 - `.xlsx` or `.xlsm`; the first worksheet is imported regardless of its name.
 - First-row headers: `Date`, `Inv#`, `Box #`, `POD#`, `Part#`, `SN#`, `QTY`. Surrounding header whitespace is ignored.
 - Maximum 10 MB request, 100 MB uncompressed workbook, 20,000 worksheet rows.
-- Blank and `nan` serials are skipped (case-insensitive). `NA` serials are imported; each distinct combination of date, invoice, box, POD, part, serial, and quantity is an independent receipt. Exact repeats are skipped. Changed details create a new receipt rather than replacing unrelated `NA` rows.
+- Blank and `nan` serials are skipped (case-insensitive). `NA` serials are imported as separate occurrences: ten identical Excel rows with Qty 1 produce ten database rows with Qty 1. Matching uses date, invoice, box, POD, part, normalized serial, quantity, and occurrence count. Re-uploading skips occurrences already present; if one matching row exists and the workbook contains ten, only the missing nine are offered for insertion. Fewer uploaded occurrences never delete existing rows. Changed details create new receipts rather than replacing unrelated `NA` rows.
 - Text is trimmed. Serial comparison ignores case and surrounding spaces, preserving internal spaces and hyphens.
 - Date and part number required for all imported rows, including `NA` serials. Dates must be Excel dates or ISO `YYYY-MM-DD` text.
 - Blank quantities default to 1. Invalid, nonfinite, zero, and negative quantities are rejected. Formula fields must be converted to values first.

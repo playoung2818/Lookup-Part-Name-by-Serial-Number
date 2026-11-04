@@ -109,6 +109,17 @@ def receipt_key(row):
     return key
 
 
+def keyed_receipts(rows):
+    """Match each NA occurrence separately, preserving counts on re-upload."""
+    occurrences = {}
+    for row in rows:
+        key = receipt_key(row)
+        if serial_key(row['serial_number']) == 'NA':
+            occurrences[key] = occurrences.get(key, 0) + 1
+            key = f'{key} occurrence:{occurrences[key]}'
+        yield key, row
+
+
 def receiving_table(connection):
     # Reflection intentionally requires an existing table; never creates schema.
     table = Table('receiving_log', MetaData(), autoload_with=connection)
@@ -119,13 +130,11 @@ def receiving_table(connection):
 
 def classify(connection, table, records):
     existing = {}
-    for row in connection.execute(select(*(table.c[key] for key in KEYS))).mappings():
-        key = receipt_key(row)
+    for key, row in keyed_receipts(connection.execute(select(*(table.c[key] for key in KEYS))).mappings()):
         if key not in ('', 'NAN'):
             existing.setdefault(key, []).append(row)
     pending, seen, errors, skipped = [], {}, [], 0
-    for row in records:
-        key = receipt_key(row)
+    for key, row in keyed_receipts(records):
         if key in seen:
             if signature(seen[key]) == signature(row):
                 skipped += 1
@@ -189,12 +198,11 @@ def database_groups(connection, table):
         raise ValueError('Review requires an existing receiving_log.id column.')
     groups = {}
     ids = set()
-    for row in connection.execute(select(table)).mappings():
+    for key, row in keyed_receipts(connection.execute(select(table).order_by(table.c.id)).mappings()):
         row = dict(row)
         if row['id'] is None or row['id'] in ids:
             raise ValueError('receiving_log.id must contain unique, non-null IDs for safe review.')
         ids.add(row['id'])
-        key = receipt_key(row)
         if key not in ('', 'NAN'):
             groups.setdefault(key, []).append(row)
     return groups
@@ -204,8 +212,8 @@ def build_review(connection, table, records):
     existing = database_groups(connection, table)
     uploaded = {}
     skipped = 0
-    for row in records:
-        candidates = uploaded.setdefault(receipt_key(row), [])
+    for key, row in keyed_receipts(records):
+        candidates = uploaded.setdefault(key, [])
         if any(signature(candidate) == signature(row) for candidate in candidates):
             skipped += 1
         else:

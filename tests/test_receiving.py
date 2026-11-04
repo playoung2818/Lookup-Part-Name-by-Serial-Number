@@ -243,10 +243,36 @@ class ReceivingReviewTests(unittest.TestCase):
         second = excel_row('NA')
         second[4] = 'ANOTHER-PART'
         review, skipped = build_review(connection_with([]), table(), records(first, second, first))
-        self.assertEqual(len(review), 2)
-        self.assertEqual(skipped, 1)
-        self.assertNotEqual(review[0]['key'], review[1]['key'])
+        self.assertEqual(len(review), 3)
+        self.assertEqual(skipped, 0)
+        self.assertEqual(len({group['key'] for group in review}), 3)
         self.assertTrue(all(group['kind'] == 'new' for group in review))
+
+    def test_ten_identical_na_rows_are_preserved_and_reupload_is_idempotent(self):
+        uploaded = records(*[excel_row('NA') for _ in range(10)])
+        for existing_count in (0, 1, 5, 10, 12):
+            with self.subTest(existing_count=existing_count):
+                existing = [dict(uploaded[0], id=i + 1) for i in range(existing_count)]
+                expected = max(10 - existing_count, 0)
+                review, skipped = build_review(connection_with(existing), table(), uploaded)
+                self.assertEqual((len(review), skipped), (expected, min(existing_count, 10)))
+                self.assertTrue(all(group['kind'] == 'new' for group in review))
+                pending, errors, skipped = classify(connection_with(existing), table(), uploaded)
+                self.assertEqual((len(pending), errors, skipped), (expected, [], min(existing_count, 10)))
+                self.connection.execute.return_value.mappings.return_value = existing
+                with patch('functions.receiving_import.receiving_table', return_value=table()):
+                    result = apply_review(self.engine, review, {str(i): 'upload:0' for i in range(len(review))})
+                self.assertEqual((result['inserted'], result['updated'], result['deleted']), (expected, 0, 0))
+                self.assertTrue(all(group['uploaded'][0]['quantity'] == 1 for group in review))
+
+    def test_na_stale_preview_does_not_insert_extra_occurrences(self):
+        uploaded = records(excel_row('NA'), excel_row('NA'))
+        review, _ = build_review(connection_with([]), table(), uploaded)
+        self.connection.execute.return_value.mappings.return_value = [dict(uploaded[0], id=1)]
+        with patch('functions.receiving_import.receiving_table', return_value=table()):
+            with self.assertRaisesRegex(ValueError, 'changed since preview'):
+                apply_review(self.engine, review, {'0': 'upload:0', '1': 'upload:0'})
+        self.connection.commit.assert_not_called()
 
     def test_existing_duplicates_become_review_not_errors(self):
         review, skipped = build_review(connection_with(self.db_rows), table(), self.uploaded * 2)
