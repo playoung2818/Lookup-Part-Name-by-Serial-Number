@@ -7,6 +7,11 @@
 __pycache__/
 *.py[cod]
 
+# Expiring receiving shipment drafts (may contain business data)
+instance/receiving_drafts/
+instance/receiving_workspaces/
+instance/receiving_id_repairs/
+
 # Local virtual environments
 .venv/
 venv/

@@ -1,0 +1,31 @@
+<details class="card mb-3" id="shipment-upload" {% if not shipment %}open{% endif %}>
+    <summary class="card-header"><strong>1. Generate template &amp; save to database</strong></summary>
+    <div class="card-body">
+        <p>QuickBooks receipt supplies <strong>Date and Inv# (QB Ref. No.)</strong>; the packing list supplies cartons/PODs/products; the export workbook supplies serials. Generation creates a draft only. Review and modify the template, then explicitly save it to the database.</p>
+        {% if shipment %}<div class="alert alert-warning">Generating another template replaces the active selection. Save or download any draft you need first. Existing database records are never changed by generation.</div>{% endif %}
+        <form id="shipment-upload-form" action="{{ url_for('receiving.generate_shipment') }}" method="post" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ session.receiving_csrf }}">
+            <input type="hidden" name="workspace_id" value="{{ shipment.id if shipment else '' }}">
+            <input type="hidden" name="revision" value="{{ shipment.revision if shipment else '' }}">
+            <div class="row g-3">
+                <div class="col-md-6"><label for="receipt" class="form-label">QuickBooks Item Receipt PDF</label><input id="receipt" name="receipt" type="file" accept=".pdf" class="form-control" required></div>
+                <div class="col-md-6"><label for="packing" class="form-label">Packing-list PDF</label><input id="packing" name="packing" type="file" accept=".pdf" class="form-control" required></div>
+                <div class="col-md-6"><label for="serials" class="form-label">Serial export Excel (.xlsx / .xlsm)</label><input id="serials" name="serials" type="file" accept=".xlsx,.xlsm" class="form-control" required><div class="form-text">Headers: Customer PO No, Ordering Model, S/N, Invoice No.</div></div>
+            </div>
+            <p class="text-muted mt-3">10 MB per file; 32 MB combined; 100 pages per PDF; 20,000 units maximum. Packing and serial-export invoice numbers must agree. Missing serials remain blank.</p>
+            <button type="submit" class="btn btn-primary">Generate draft template</button>
+        </form>
+    </div>
+</details>
+<section class="card mb-3">
+    <div class="card-header"><strong>2. Reload entry by INV# — serial numbers only</strong></div>
+    <form id="invoice-search-form" class="card-body d-flex flex-wrap gap-2 align-items-center" action="{{ url_for('receiving.reload_invoice') }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ session.receiving_csrf }}">
+        <input type="hidden" name="workspace_id" value="{{ shipment.id if shipment else '' }}">
+        <input type="hidden" name="revision" value="{{ shipment.revision if shipment else '' }}">
+        <label for="invoice-number">Exact INV#</label>
+        <input id="invoice-number" name="invoice_number" class="form-control w-auto" maxlength="255" placeholder="QuickBooks Ref. No." required>
+        <button class="btn btn-outline-primary" type="submit">Search / reload</button>
+        <span class="small text-muted">Preserve leading zeros. Only the selected invoice's SN values can be changed.</span>
+    </form>
+</section>

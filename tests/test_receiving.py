@@ -1,5 +1,4 @@
 import io
-import re
 import unittest
 from datetime import date
 from unittest.mock import MagicMock, patch
@@ -8,7 +7,6 @@ from openpyxl import Workbook
 from sqlalchemy import MetaData, Table, Column, String, Date, Float, Integer
 from sqlalchemy.exc import SQLAlchemyError
 
-from app import create_app
 from functions.receiving_import import read_upload, classify, import_records, KEYS, build_review, apply_review, snapshot
 
 
@@ -46,12 +44,31 @@ class ReceivingValidationTests(unittest.TestCase):
     def test_read_trim_placeholders_default_quantity(self):
         result, errors, skipped = read_upload(workbook([excel_row(' SN-1 ', None), excel_row('NA'), excel_row('nan'), excel_row('')]))
         self.assertEqual(errors, [])
-        self.assertEqual(skipped, 2)
-        self.assertEqual(len(result), 2)
+        self.assertEqual(skipped, 1)
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[2]['serial_number'], '')
         self.assertEqual(result[1]['serial_number'], 'NA')
         self.assertEqual(result[0]['serial_number'], 'SN-1')
         self.assertEqual(result[0]['quantity'], 1)
         self.assertEqual(result[0]['entry_date'], '2026-10-08')
+
+    def test_blank_serial_rows_are_valid_but_empty_rows_are_skipped(self):
+        result, errors, skipped = read_upload(workbook([excel_row(''), [None] * 7]))
+        self.assertEqual((len(result), errors, skipped), (1, [], 1))
+        pending, errors, skipped = classify(connection_with([]), table(), result * 10)
+        self.assertEqual((len(pending), errors, skipped), (10, [], 0))
+        existing = [dict(result[0], id=i) for i in range(10)]
+        self.assertEqual(build_review(connection_with(existing), table(), result * 10), ([], 10))
+
+    def test_reference_is_optional_and_validated(self):
+        headers = ['Date', 'Inv#', 'Box #', 'POD#', 'Part#', 'SN#', 'Qty', 'Reference']
+        rows, errors, _ = read_upload(workbook([excel_row('') + ['NTA_Customer_SO-1']], headers))
+        self.assertEqual(errors, [])
+        self.assertEqual(rows[0]['Reference'], 'NTA_Customer_SO-1')
+        rows, errors, _ = read_upload(workbook([excel_row() + ['']], headers))
+        self.assertNotIn('Reference', rows[0])
+        _, errors, _ = read_upload(workbook([excel_row() + ['=VLOOKUP(A1,A:B,2,0)']], headers))
+        self.assertIn('Reference must be a value', errors[0])
 
     def test_bad_values_block_not_coerce(self):
         for quantity in ['bad', 0, -1, 'nan', 'inf', '=1+2']:
@@ -137,66 +154,6 @@ class ReceivingValidationTests(unittest.TestCase):
                     import_records(engine, records(excel_row()))
             connection.rollback.assert_called_once()
             connection.commit.assert_not_called()
-
-
-class ReceivingRouteTests(unittest.TestCase):
-    def setUp(self):
-        self.app = create_app({'TESTING': True, 'SECRET_KEY': 'test', 'SQLALCHEMY_DATABASE_URI': 'sqlite://'})
-        self.client = self.app.test_client()
-        self.assertEqual(self.client.get('/receiving').status_code, 200)
-        with self.client.session_transaction() as session:
-            self.csrf = session['receiving_csrf']
-
-    def tearDown(self):
-        from models.models import db
-        with self.app.app_context():
-            db.session.remove()
-            db.engine.dispose()
-
-    def preview(self, rows):
-        review = [{'key': 'SN-1', 'uploaded': records(*rows), 'existing': [], 'snapshot': snapshot([]), 'kind': 'new'}]
-        with patch('routes.Receiving_Routes.receiving_table', return_value=table()), patch('routes.Receiving_Routes.build_review', return_value=(review, 0)):
-            return self.client.post('/receiving', data={'csrf_token': self.csrf, 'file': (io.BytesIO(workbook(rows)), 'receiving.xlsm')})
-
-    def test_preview_never_writes_and_confirmation_required(self):
-        with patch('routes.Receiving_Routes.apply_review', return_value={'inserted': 1, 'updated': 0, 'deleted': 0, 'untouched': 0}) as save:
-            response = self.preview([excel_row()])
-            self.assertEqual(response.status_code, 200)
-            save.assert_not_called()
-            token = re.search(rb'name="preview_token" value="([^"]+)"', response.data).group(1).decode()
-            response = self.client.post('/receiving', data={'csrf_token': self.csrf, 'action': 'import', 'preview_token': token})
-            self.assertIn(b'1 rows inserted', response.data)
-            save.assert_called_once()
-
-    def test_csrf_and_tampered_preview_rejected(self):
-        self.assertEqual(self.client.post('/receiving', data={}).status_code, 400)
-        with patch('routes.Receiving_Routes.apply_review') as save:
-            response = self.client.post('/receiving', data={'csrf_token': self.csrf, 'action': 'import', 'preview_token': 'modified'})
-            self.assertEqual(response.status_code, 400)
-            save.assert_not_called()
-
-    def test_all_conflicts_render_with_choices_and_escaped_notes(self):
-        review = []
-        for i in range(142):
-            uploaded = records(excel_row(f'SN-{i}'))
-            existing = [dict(uploaded[0], id=i * 2, entry_date=date(2026, 10, 8), Reference='<script>bad()</script>'),
-                        dict(uploaded[0], id=i * 2 + 1, Reference='note')]
-            review.append({'key': f'SN-{i}', 'uploaded': uploaded, 'existing': existing,
-                           'snapshot': snapshot(existing), 'kind': 'conflict'})
-        with patch('routes.Receiving_Routes.receiving_table', return_value=table()), patch('routes.Receiving_Routes.build_review', return_value=(review, 18029)):
-            response = self.client.post('/receiving', data={'csrf_token': self.csrf, 'file': (io.BytesIO(workbook([excel_row()])), 'receiving.xlsx')})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data.count(b'class="serial-group"'), 142)
-        self.assertIn(b'name="choice_141"', response.data)
-        self.assertIn(b'&lt;script&gt;bad()&lt;/script&gt;', response.data)
-        self.assertNotIn(b'<script>bad()', response.data)
-        self.assertIn(b'name="preview_token"', response.data)
-        self.assertIn(b'name="allow_delete"', response.data)
-
-    def test_validation_errors_have_no_confirm_button(self):
-        response = self.preview([excel_row(qty=-1)])
-        self.assertIn(b'Import blocked', response.data)
-        self.assertNotIn(b'name="preview_token"', response.data)
 
 
 class ReceivingReviewTests(unittest.TestCase):
@@ -302,6 +259,28 @@ class ReceivingReviewTests(unittest.TestCase):
         update = next(statement for statement in statements if str(statement).startswith('UPDATE'))
         self.assertNotIn('Reference', update.compile().params)
         self.assertIn(10, update.compile().params.values())
+
+    def test_supplied_reference_is_reviewed_and_updated(self):
+        uploaded = dict(self.uploaded[0], Reference='new reference')
+        review, skipped = build_review(connection_with([self.db_rows[0]]), table(), [uploaded])
+        self.assertEqual((len(review), skipped), (1, 0))
+        self.group.update(uploaded=[uploaded])
+        result = self.apply('upload:0', True)
+        update = next(call.args[0] for call in self.connection.execute.call_args_list
+                      if str(call.args[0]).startswith('UPDATE'))
+        self.assertEqual(update.compile().params['Reference'], 'new reference')
+        self.assertEqual(result['updated'], 1)
+
+    def test_blank_serial_inserts_keep_empty_string_not_na(self):
+        uploaded = records(excel_row(''), excel_row(''))
+        review, skipped = build_review(connection_with([]), table(), uploaded)
+        self.connection.execute.return_value.mappings.return_value = []
+        with patch('functions.receiving_import.receiving_table', return_value=table()):
+            result = apply_review(self.engine, review, {'0': 'upload:0', '1': 'upload:0'})
+        inserts = [call.args[0] for call in self.connection.execute.call_args_list
+                   if str(call.args[0]).startswith('INSERT')]
+        self.assertEqual(result['inserted'], 2)
+        self.assertTrue(all(stmt.compile().params['serial_number'] == '' for stmt in inserts))
 
     def test_leave_unchanged_does_not_modify_or_check_staleness(self):
         result = self.apply('skip', current=[])

@@ -1,4 +1,4 @@
-"""Validate uploads and append only new serials to the existing receiving_log."""
+"""Validate receiving uploads, preserving non-serialized occurrences and References."""
 import math
 import hashlib
 import json
@@ -44,16 +44,28 @@ def read_upload(content):
             if headers.count(header.casefold()) != 1:
                 raise ValueError(f"Expected exactly one '{header}' column in the first row.")
         positions = {key: headers.index(header.casefold()) for header, key in COLUMNS.items()}
+        if headers.count('reference') > 1:
+            raise ValueError("Expected at most one 'Reference' column.")
+        reference_position = headers.index('reference') if 'reference' in headers else None
         records, errors, skipped = [], [], 0
         for number, values in enumerate(rows, 2):
             if number > 20001:
                 raise ValueError('Upload at most 20,000 worksheet rows at a time.')
             row = {key: values[index] if index < len(values) else None for key, index in positions.items()}
             serial = serial_key(row['serial_number'])
-            if serial in ('', 'NAN'):
+            if not any(clean(value) for value in row.values()) or serial == 'NAN':
                 skipped += 1
                 continue
             problems = []
+            if reference_position is not None:
+                reference = clean(values[reference_position] if reference_position < len(values) else None)
+                if reference.startswith('='):
+                    problems.append('Reference must be a value, not a formula')
+                if len(reference) > 10000:
+                    problems.append('Reference exceeds 10,000 characters')
+                # Absent/blank Reference preserves the stored value on updates.
+                if reference:
+                    row['Reference'] = reference
             for key in STRINGS:
                 row[key] = clean(row[key])
                 if len(row[key]) > 255:
@@ -100,24 +112,39 @@ def signature(row):
 
 
 def receipt_key(row):
-    """NA is not an identity: match non-serialized receipts by full event."""
+    """Missing serials and NA identify receipt events, not unique physical units."""
     key = serial_key(row['serial_number'])
-    if key == 'NA':
+    if key in ('', 'NA'):
         event = (*signature(row)[:-1], float(row['quantity']))
         digest = hashlib.sha256(json.dumps(event).encode()).hexdigest()
-        return f'NA receipt:{digest}'
+        return f"{'Blank SN' if key == '' else 'NA'} receipt:{digest}"
     return key
 
 
 def keyed_receipts(rows):
-    """Match each NA occurrence separately, preserving counts on re-upload."""
+    """Match each non-serialized occurrence separately, preserving re-upload counts."""
     occurrences = {}
     for row in rows:
         key = receipt_key(row)
-        if serial_key(row['serial_number']) == 'NA':
+        if serial_key(row['serial_number']) in ('', 'NA'):
             occurrences[key] = occurrences.get(key, 0) + 1
             key = f'{key} occurrence:{occurrences[key]}'
         yield key, row
+
+
+def imported_equal(existing, uploaded):
+    return (signature(existing) == signature(uploaded)
+            and ('Reference' not in uploaded or clean(existing.get('Reference')) == uploaded['Reference']))
+
+
+def import_data(row, table):
+    data = {key: row[key] for key in KEYS}
+    data['entry_date'] = date.fromisoformat(data['entry_date'])
+    if 'Reference' in row:
+        if 'Reference' not in table.c:
+            raise ValueError('receiving_log is missing its existing Reference column; nothing saved.')
+        data['Reference'] = row['Reference']
+    return data
 
 
 def receiving_table(connection):
@@ -130,13 +157,16 @@ def receiving_table(connection):
 
 def classify(connection, table, records):
     existing = {}
-    for key, row in keyed_receipts(connection.execute(select(*(table.c[key] for key in KEYS))).mappings()):
+    columns = [table.c[key] for key in KEYS]
+    if 'Reference' in table.c:
+        columns.append(table.c.Reference)
+    for key, row in keyed_receipts(connection.execute(select(*columns)).mappings()):
         if key not in ('', 'NAN'):
             existing.setdefault(key, []).append(row)
     pending, seen, errors, skipped = [], {}, [], 0
     for key, row in keyed_receipts(records):
         if key in seen:
-            if signature(seen[key]) == signature(row):
+            if imported_equal(seen[key], row):
                 skipped += 1
             else:
                 errors.append(f"Excel row {row['_row']}: serial {row['serial_number']} conflicts with another uploaded row.")
@@ -146,7 +176,7 @@ def classify(connection, table, records):
         if len(matches) > 1:
             errors.append(f"Serial {row['serial_number']} already has {len(matches)} database records; resolve duplicates first.")
         elif matches:
-            if signature(matches[0]) == signature(row):
+            if imported_equal(matches[0], row):
                 skipped += 1
             else:
                 errors.append(f"Excel row {row['_row']}: serial {row['serial_number']} already exists with different receiving details.")
@@ -174,12 +204,8 @@ def import_records(engine, records):
             if errors:
                 raise ValueError('Import cancelled: ' + ' '.join(errors[:20]))
             if pending:
-                data = []
                 for row in pending:
-                    item = {key: row[key] for key in KEYS}
-                    item['entry_date'] = date.fromisoformat(item['entry_date'])
-                    data.append(item)
-                connection.execute(table.insert(), data)
+                    connection.execute(table.insert().values(**import_data(row, table)))
             connection.commit()
             return len(pending), skipped
         except Exception:
@@ -214,14 +240,14 @@ def build_review(connection, table, records):
     skipped = 0
     for key, row in keyed_receipts(records):
         candidates = uploaded.setdefault(key, [])
-        if any(signature(candidate) == signature(row) for candidate in candidates):
+        if any(imported_equal(candidate, row) and imported_equal(row, candidate) for candidate in candidates):
             skipped += 1
         else:
             candidates.append(row)
     review = []
     for key, candidates in uploaded.items():
         matches = sorted(existing.get(key, []), key=lambda row: row['id'])
-        if len(matches) == 1 and len(candidates) == 1 and signature(matches[0]) == signature(candidates[0]):
+        if len(matches) == 1 and len(candidates) == 1 and imported_equal(matches[0], candidates[0]):
             skipped += 1
             continue
         # History mode retains every existing event and only adds distinct ones.
@@ -264,8 +290,8 @@ def apply_review(engine, review, choices, allow_delete=False):
                 if choice not in options:
                     raise ValueError('Invalid review choice. Nothing saved.')
                 chosen = options[choice]
-                # Upload replaces the lowest-ID existing row, preserving Reference
-                # and all other non-imported fields on that survivor.
+                # Upload replaces the lowest-ID row. A supplied Reference updates
+                # it; absent/blank Reference and other non-imported fields survive.
                 survivor = chosen if choice.startswith('db:') else (matches[0] if matches else None)
                 removed = [row['id'] for row in matches if survivor is None or row['id'] != survivor['id']]
                 if removed and not allow_delete:
@@ -278,8 +304,7 @@ def apply_review(engine, review, choices, allow_delete=False):
                         raise ValueError('Database rows changed unexpectedly. Nothing saved.')
                     counts['deleted'] += len(removed)
                 if choice.startswith('upload:'):
-                    data = {key: chosen[key] for key in KEYS}
-                    data['entry_date'] = date.fromisoformat(data['entry_date'])
+                    data = import_data(chosen, table)
                     if survivor is None:
                         connection.execute(table.insert().values(**data))
                         counts['inserted'] += 1

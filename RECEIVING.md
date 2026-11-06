@@ -1,72 +1,85 @@
-# Receiving upload and conflict review
+# Receiving: template review and invoice-scoped serial entry
 
-Open **Receiving** (`/receiving`). Upload the workbook, review an expandable serial-number tree, choose versions to keep, then explicitly apply the selected changes. Upload and preview never modify database records.
+Open **http://192.168.60.215:5000/receiving**.
 
-## Workbook requirements
+## 1. Generate template and save to database
 
-- `.xlsx` or `.xlsm`; the first worksheet is imported regardless of its name.
-- First-row headers: `Date`, `Inv#`, `Box #`, `POD#`, `Part#`, `SN#`, `QTY`. Surrounding header whitespace is ignored.
-- Maximum 10 MB request, 100 MB uncompressed workbook, 20,000 worksheet rows.
-- Blank and `nan` serials are skipped (case-insensitive). `NA` serials are imported as separate occurrences: ten identical Excel rows with Qty 1 produce ten database rows with Qty 1. Matching uses date, invoice, box, POD, part, normalized serial, quantity, and occurrence count. Re-uploading skips occurrences already present; if one matching row exists and the workbook contains ten, only the missing nine are offered for insertion. Fewer uploaded occurrences never delete existing rows. Changed details create new receipts rather than replacing unrelated `NA` rows.
-- Text is trimmed. Serial comparison ignores case and surrounding spaces, preserving internal spaces and hyphens.
-- Date and part number required for all imported rows, including `NA` serials. Dates must be Excel dates or ISO `YYYY-MM-DD` text.
-- Blank quantities default to 1. Invalid, nonfinite, zero, and negative quantities are rejected. Formula fields must be converted to values first.
-- Invalid Excel values still block saving; duplicates are now reviewable decisions, not validation errors.
+1. Upload exactly three files: QuickBooks Item Receipt PDF, packing-list PDF, and serial export Excel.
+2. Generate a **draft only**. Generation does not insert or update database records.
+3. Review/edit date, box, POD, part, SN, quantity and Reference in the draft grid. INV# is fixed to the generated QuickBooks Ref. No.; each transaction must have exactly one nonblank INV#. Adding/deleting draft rows is not supported.
+4. **Save draft changes** retains the reviewed template on the server without database writes.
+5. **Save template to database & finish** saves current edits, validates the draft and commits all rows in one database transaction. This ends template editing and switches to serial-only database entry.
+6. If the INV# already exists, template commit is rejected without modifying existing records. Use the second module to reopen it. Other invoices are never overwritten or deleted by template commit.
 
-## GitHub-style change tree
+There is no POD-Reference upload parameter. If `RECEIVING_REFERENCE_PATH` points to an available workbook, the server can still use it automatically. Otherwise References may be blank and can be reviewed in the draft.
 
-Each new or conflicting serial has an expandable comparison with all database versions and distinct uploaded versions. Database IDs and Excel row numbers identify the candidates. Other database fields, including Reference, are displayed alongside the import fields. Changed cells are highlighted against the first database version (or first uploaded version for new serials). Search filters the tree without changing any decisions. Expand/collapse controls and a leave-all-unchanged action are available.
+Both grids support cell-range selection by dragging, Shift-clicking or Shift+Arrow keys. Paste with Ctrl+V / Cmd+V. In drafts, a rectangular Excel block expands from one starting cell, or must match the selected range. One copied value fills a selection. INV# remains locked; pastes touching it are rejected before changing any cells. Dates must be pasted as YYYY-MM-DD; invalid or out-of-bounds pastes are rejected as a whole. In saved invoice entry, selection/paste is restricted to the SN column and visible rows.
 
-All conflict groups are displayed, not only the first 100. Validation errors alone are limited to the first 100 messages.
+Draft cells are not autosaved. Save before leaving. Switching transactions warns about leaving a draft. Draft files are server-side business data, not database records.
 
-A repeated serial is not necessarily a duplicate event: an original purchase followed by a DOA/RMA return is valid history. Exact events compare date, invoice, box, POD, part, normalized serial, and quantity. Review the differences to distinguish a legitimate new receipt from an erroneous edit.
+## 2. Reload entry by INV#
 
-Choices per serial:
+Search the **exact QuickBooks INV#**, preserving leading zeros. This loads that invoice's current database rows and establishes a browser workspace scoped to the selected invoice. No file uploads are needed.
 
-- **Keep history / add new events**: preserve every existing database record and insert only distinct uploaded events not already recorded. Never updates or deletes existing records, and requires no deletion authorization. For a Newegg purchase followed by a Samsung RMA already in the database, a matching uploaded Samsung row is skipped and both original database rows remain intact.
-- **Leave unchanged** (default for conflicts): skip this serial's upload and leave all its database rows untouched. Existing duplicates are not deleted. Other selected serials can still be applied.
-- **Keep DB #ID**: preserve the selected database row in full and delete other existing rows with this normalized serial. Do not import its uploaded versions.
-- **Keep Excel row #**: if no database row exists, insert the chosen version. Otherwise update the lowest-ID database row with the seven imported fields and delete the other existing versions. The survivor's ID, Reference, and non-imported fields are preserved; notes on deleted rows are not merged.
+Only SN is editable after database commit or invoice search:
 
-New serials with just one uploaded version default to importing it, but can be left unchanged. Repeated uploaded rows with identical details are collapsed. A serial with exactly one matching database row and one matching uploaded version is skipped automatically.
+- Each changed SN saves individually after a short pause, on Enter, or on blur.
+- Enter / Arrow Down advances; Shift+Enter / Arrow Up goes back.
+- Paste one Excel column into consecutive visible rows. Bulk Qty > 1 rows accept SN entry without changing quantities.
+- Ctrl+S / Cmd+S retries individual row updates. Each row also has a Save/retry button.
+- Filter by box/POD/part/SN/Reference, blank SN, or unsaved/error status.
+- Refresh reads the current database. Database failure never substitutes stale file values.
+- Excel and Word downloads read current database values in entry mode. Word inspection remains Pending, never automatic PASS.
 
-History mode labels existing rows KEEP HISTORY and uploaded rows INSERT NEW EVENT or ALREADY RECORDED — SKIP. The individual-version cleanup choices still intentionally keep only one record; do not select those for legitimate RMA history.
+Other fields cannot be edited through the row endpoint. No database deletion endpoint is provided. Selecting a different invoice or generating another template waits for pending SN saves; failed entries must be resolved first.
 
-The UI labels database rows KEEP, UPDATE, DELETE, or UNCHANGED as decisions change, and summarizes insert/update/delete counts. Database deletions require a separate explicit authorization checkbox, enforced server-side as well as in the browser. Back up data before resolving duplicates. No records are changed until **Apply selected changes** is clicked.
+## Database safety
 
-## Transaction safety
+No new tables, indexes or constraints are created. The existing `receiving_log` must have unique non-null IDs. Blank serials remain blank, not automatically NA.
 
-The existing `receiving_log` table must have unique, non-null `id` values. No tables, indexes, or constraints are created. Connection configuration remains the application's `DATABASE_DSN`.
+- Draft updates are validated as a complete batch before replacing saved draft values. Stale template revisions are rejected.
+- Template commits acquire the existing PostgreSQL `SHARE ROW EXCLUSIVE` lock (10-second timeout), or SQLite `BEGIN IMMEDIATE`. The existing-invoice check happens under this lock.
+- A durable write-ahead journal bridges database commit and recording generated IDs. Retry an ambiguous save; do not regenerate. Refresh recovers a confirmed commit without reinsertion. Pending journals prevent replacement/editing.
+- `POST /receiving/row` accepts only workspace ID, row ID, SN and expected database-row version. The server resolves the row in the active workspace, verifies its current database invoice matches the fixed invoice scope, and updates only SN with an ID-and-invoice predicate.
+- Stale versions reject external changes rather than overwrite them. If a row moves to another invoice externally, it cannot be edited through the old selection. Deleted rows are not recreated.
+- Duplicate nonblank/non-NA serials are checked across the database. Lost-response retries for an already stored SN are read-only.
+- The original occurrence-aware receipt matching and recovery machinery remains available for legacy workspaces. New template commits reject existing invoices rather than reconcile/overwrite them.
 
-Preview tokens contain only affected serials, are signed and session-bound, and expire after 30 minutes. A stable `SECRET_KEY` must be shared by application workers. CSRF validation protects both POST steps. This feature uses the application's existing access controls; it does not introduce authentication.
+**Access control:** The module uses signed browser sessions and CSRF protection, but does not add user login or per-user invoice permissions. Anyone with deployment access can search an invoice. Transaction scoping protects the selected editing workflow; restrict deployment access if only designated staff should open particular invoices.
 
-Apply acquires a PostgreSQL `SHARE ROW EXCLUSIVE` table lock (10-second timeout), or SQLite `BEGIN IMMEDIATE`, before rechecking the selected serials. PostgreSQL ordinary reads remain available while other writers wait. Other database dialects are rejected.
+## Sources and generation rules
 
-A snapshot includes every database field for each affected serial. If any selected serial's records changed since preview, the entire operation is cancelled; upload again. Unchanged/skipped serials are never modified and do not block application of other decisions. All choices and deletion authorization are checked before writes begin. Insert/update/delete errors roll back the entire batch, including foreign-key constraint failures. Replaying an already-applied change fails the snapshot check rather than duplicating records.
+- QuickBooks Date and Ref. No. supply receiving Date and INV#, preserving the identifier exactly (e.g. `80003610`). Vendor invoice may differ (e.g. `8003610`); serial-export invoice must exactly match the packing invoice.
+- Packing list supplies carton/range, POD, model and quantity. Omitted cartons inherit the preceding carton across pages. Ranges remain ranges; individual allocations are not guessed.
+- Serial headers: `Customer PO No`, `Ordering Model`, `S/N`, `Invoice No`. Consume in source order by POD + normalized model. Duplicate export serials and invoice mismatches block generation.
+- Configured reference lookup headers: `POD`, `Reference`; first exact POD match wins. Actual text is stored, not external formulas.
+- Prefixes `Cbl, DIN, AccsyBx, Gpubr, Ant, FK, TB, Screw, Wmkit, Dmpbr, DtC` retain bulk quantities; other products expand to Qty 1 rows. Three notebook SSD aliases apply.
+- Packing quantities/carton totals must reconcile. No-POD lines are excluded and reported, not assigned guessed PODs. Missing References and unused serials are reported.
+- Validate QuickBooks quantity × cost and totals. Component lines remain evidence, not additional physical receiving rows.
+- Generated workbook exports retain source evidence; invoice-search exports contain current rows without original generation evidence.
+- Open PO price/bundle inference, purchase-order writes, shared-folder POD merging and server printing are not implemented.
 
-Locks protect this transaction, not future writes by other applications. Do not enforce uniqueness on serial alone: legitimate RMA history may repeat a serial. Any permanent database-wide event uniqueness rule requires a separately approved schema design that accounts for distinct receipt events. Preview reads all receiving rows; very large tables may eventually need targeted indexed lookups.
+## Persistence and deployment
 
-## Read-only PostgreSQL duplicate audit
+`instance/receiving_workspaces/<owner>/` holds active selection, draft rows, source evidence, database IDs and save-recovery metadata. In entry mode the database is the source of displayed values. These ignored files should be protected/backed up. Never delete pending journals.
 
-```sql
-SELECT *
-FROM (
-    SELECT *, COUNT(*) OVER (
-        PARTITION BY UPPER(TRIM(serial_number))
-    ) AS cnt
-    FROM receiving_log
-    WHERE serial_number IS NOT NULL
-      AND UPPER(TRIM(serial_number)) NOT IN ('', 'NA', 'NAN')
-) t
-WHERE cnt > 1
-ORDER BY entry_date DESC, id DESC;
-```
+Signed persistent browser cookies identify the active selection (365-day session lifetime). Use a stable `SECRET_KEY`. Clearing cookies creates a new selection; saved database invoices can still be searched again. Workspaces do not expire automatically. All workers must share the workspace filesystem; cross-process locks serialize changes.
+
+Legacy workspace migration retains a `.before_database.json` backup. Already initialized legacy workspaces read database values; uninitialized legacy workspaces offer initial-save recovery.
+
+Dependencies: existing Flask/SQLAlchemy stack plus `pdfplumber`, `openpyxl`, `python-docx`. Limits: 10 MB/file, 32 MB/upload, 100 PDF pages, 20,000 rows/units, 100 MB decompressed workbook.
+
+Restart with `scripts/run_web.py` or the deployed WSGI factory. Do not run schema setup scripts for this feature.
 
 ## Verification
 
 ```text
-python -B -m unittest discover -s tests -p 'test_receiving.py' -v
+python -m unittest discover -s tests
 node --check static/receiving.js
+node --check static/receiving_template.js
+node --check static/receiving_grid.js
+node tests/receiving_entry.test.cjs
+node tests/receiving_grid.test.cjs
 ```
 
-Tests use generated workbooks and mocked database connections; no database tables are created or production records modified. Live PostgreSQL locking/constraint behavior should also be verified in an approved test environment before database cleanup.
+Receiving tests use generated workbooks, SQL metadata and a transactional fake database, never production records or DDL. They cover deferred generation, draft validation, explicit commit, closed-template protection, existing-invoice rejection, invoice search, serial-only payloads, cross-workspace rejection, stale edits, duplicates and save recovery. `tests/receiving_entry.browser.html` is an isolated browser fixture for draft rectangular paste, atomic locked-invoice rejection, SN range selection, draft review/commit and scanner/paste/serial entry.

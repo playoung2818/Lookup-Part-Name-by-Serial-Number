@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Isolated receiving database-entry test</title>
+<body><pre id="browser-result">RUNNING</pre><iframe id="app" title="Receiving fixture" style="width:1500px;height:900px;border:0"></iframe>
+<script>
+(async () => {
+    const result = document.getElementById('browser-result'), frame = document.getElementById('app');
+    const assert = (condition, label) => { if (!condition) throw Error(label); };
+    const loaded = () => new Promise(resolve => frame.addEventListener('load', resolve, {once:true}));
+    const wait = async (check, label) => {
+        for (let i=0;i<150;i++) { if (await check()) return; await new Promise(resolve => setTimeout(resolve,100)); }
+        throw Error(`Timed out: ${label}`);
+    };
+    const workspace = async () => (await (await fetch('/receiving/workspace')).json()).workspace;
+    const db = async () => (await (await fetch('/fixture-db')).json());
+    const doc = () => frame.contentDocument;
+    const editable = () => [...doc().querySelectorAll('.sn-input')];
+    const enter = (input,text) => { input.value=text; input.dispatchEvent(new Event('input',{bubbles:true})); };
+    try {
+        let navigation=loaded(); frame.src='/receiving'; await navigation;
+        const form=doc().getElementById('shipment-upload-form');
+        for (const [field,name] of [['receipt','receipt.pdf'],['packing','packing.pdf'],['serials','serials.xlsx']]) {
+            const transfer=new DataTransfer(); transfer.items.add(new File(['fixture'],name)); form.elements[field].files=transfer.files;
+        }
+        navigation=loaded(); form.requestSubmit(); await navigation;
+        assert(doc().querySelectorAll('#template-table tbody tr').length===6,'generated draft table');
+        assert((await db()).rows.length===0,'generation does not write database records');
+        frame.contentWindow.confirm=()=>true;
+        const draftRows=[...doc().querySelectorAll('#template-table tbody tr')];
+        const start=draftRows[0].querySelector('[data-field="box_number"]');
+        start.focus();
+        let block=new DataTransfer(); block.setData('text/plain','BOX-A\tPOD-A\r\nBOX-B\tPOD-B\r\n');
+        start.dispatchEvent(new ClipboardEvent('paste',{clipboardData:block,bubbles:true,cancelable:true}));
+        assert(draftRows[0].querySelector('[data-field="pod_number"]').value==='POD-A'&&draftRows[1].querySelector('[data-field="box_number"]').value==='BOX-B','rectangular Excel paste into draft');
+        const date=draftRows[0].querySelector('[data-field="entry_date"]');
+        date.focus();
+        block=new DataTransfer(); block.setData('text/plain','2026-11-05\tOTHER-INV');
+        date.dispatchEvent(new ClipboardEvent('paste',{clipboardData:block,bubbles:true,cancelable:true}));
+        assert(date.value==='2026-11-04','locked invoice paste rejected atomically');
+        const draftPart=doc().querySelector('#template-table [data-field="part_number"]');
+        enter(draftPart,'REVIEWED-PART');
+        navigation=loaded(); doc().getElementById('commit-template').click(); await navigation;
+        assert(editable().length===6,'serial-only entry after explicit commit');
+        assert((await db()).rows.length===6,'explicit save writes all reviewed rows');
+        assert((await db()).rows[0].part_number==='REVIEWED-PART','review changes committed');
+        assert(!doc().getElementById('save-draft')&&!doc().getElementById('save-database'),'no draft or whole-table save controls');
+        const initialIds=(await workspace()).rows.map(row=>row.db_id).join(',');
+        editable()[1].focus(); enter(editable()[1],'BROWSER-SCAN-1');
+        editable()[1].dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+        assert(doc().activeElement===editable()[2],'scanner Enter advances');
+        editable()[2].dispatchEvent(new PointerEvent('pointerdown',{button:0,buttons:1,bubbles:true}));
+        frame.contentWindow.dispatchEvent(new PointerEvent('pointerup'));
+        editable()[3].dispatchEvent(new PointerEvent('pointerdown',{button:0,buttons:1,shiftKey:true,bubbles:true,cancelable:true}));
+        frame.contentWindow.dispatchEvent(new PointerEvent('pointerup'));
+        assert(doc().querySelectorAll('#entry-table .grid-selected').length===2,'Shift-click selects multiple SN cells');
+        const transfer=new DataTransfer(); transfer.setData('text/plain','BROWSER-SCAN-2\r\nBROWSER-SCAN-3\r\n');
+        editable()[2].dispatchEvent(new ClipboardEvent('paste',{clipboardData:transfer,bubbles:true,cancelable:true}));
+        editable()[3].focus();
+        editable()[3].dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+        assert(doc().activeElement===editable()[4],'bulk row included in scanner navigation');
+        enter(editable()[4],'BROWSER-BULK');
+        await wait(async()=>{const s=await workspace();return s.rows[1].serial_number==='BROWSER-SCAN-1'&&s.rows[3].serial_number==='BROWSER-SCAN-3'&&s.rows[4].serial_number==='BROWSER-BULK';},'individual direct DB saves');
+        await wait(()=>doc().getElementById('entry-count').textContent.includes('0 waiting'),'save responses rendered');
+        navigation=loaded(); frame.src='/receiving'; await navigation;
+        assert(editable()[1].value==='BROWSER-SCAN-1'&&editable()[4].value==='BROWSER-BULK','page reload retrieves DB values');
+        const before=(await db()).writes;
+        enter(editable()[1],'BROWSER-EDITED');
+        doc().dispatchEvent(new KeyboardEvent('keydown',{key:'s',ctrlKey:true,bubbles:true,cancelable:true}));
+        await wait(async()=>(await workspace()).rows[1].serial_number==='BROWSER-EDITED','one-row update');
+        await wait(()=>doc().getElementById('entry-count').textContent.includes('0 waiting'),'update response');
+        assert((await workspace()).rows.map(row=>row.db_id).join(',')===initialIds,'IDs unchanged');
+        assert((await db()).writes===before+1,'one edited cell causes only one DB UPDATE');
+        const dbRows=(await db()).rows;
+        assert(dbRows.length===6&&dbRows[4].quantity===3,'no duplicates and bulk qty unchanged');
+        enter(editable()[2],'EXPORT-1');
+        editable()[2].closest('tr').querySelector('.row-save').click();
+        await wait(()=>doc().getElementById('entry-message').textContent.includes('not saved'),'duplicate blocked');
+        assert(doc().querySelectorAll('tr.sn-duplicate').length===2,'duplicates highlighted');
+        assert((await db()).rows[2].serial_number==='BROWSER-SCAN-2','duplicate does not change DB');
+        enter(editable()[2],'BROWSER-SCAN-2');
+        doc().getElementById('only-blank').click();
+        assert([...doc().querySelectorAll('#entry-table tbody tr:not([hidden])')].every(row=>!row.querySelector('.sn-input').value),'blank filter');
+        const stateBefore=await workspace();
+        const failed=await fetch('/receiving/generate',{method:'POST',body:new URLSearchParams({csrf_token:doc().getElementById('receiving-workspace').dataset.csrf})});
+        assert(failed.status===400&&(await workspace()).id===stateBefore.id,'failed upload preserves table');
+        result.textContent='PASS: draft generation, rectangular Excel paste, locked invoice protection, range selection, review and explicit DB commit, per-cell auto UPDATE, scanner Enter, paste, bulk SN, DB-backed refresh, stable IDs, one-row-only writes, duplicate protection and failed-upload preservation. Isolated fake database only.';
+    } catch(error) {result.textContent=`FAIL: ${error.stack}`;}
+})();
+</script></body></html>

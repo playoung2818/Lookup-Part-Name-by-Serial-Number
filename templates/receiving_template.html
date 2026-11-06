@@ -1,0 +1,29 @@
+<section class="card" id="receiving-template" data-csrf="{{ session.receiving_csrf }}">
+    <div class="card-header"><h1 class="h5 mb-1">Review template — INV# {{ shipment.invoice_scope }}</h1><span class="text-muted">Draft only — no database writes yet. Invoice is locked to this transaction.</span></div>
+    <div class="card-body">
+        <p>Review and edit the cells below. Saving to the database completes template generation; subsequent entry is serial numbers only. An existing INV# cannot be overwritten here.</p>
+        <p class="small text-muted">Select cells by dragging, Shift-clicking or Shift+Arrow keys. Paste an Excel block with Ctrl+V / Cmd+V. Click one starting cell to expand the paste, or select a matching range. A single copied value fills the selection. INV# is locked; dates must be YYYY-MM-DD.</p>
+        <button type="button" class="btn btn-outline-primary" id="save-template-draft">Save draft changes</button>
+        <button type="button" class="btn btn-primary" id="commit-template">Save template to database &amp; finish</button>
+        <p id="template-message" class="mt-2" role="status" aria-live="polite">Draft retained on this server. Changes in cells must be saved.</p>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered mb-0" id="template-table">
+            <thead><tr><th>#</th><th>Date</th><th>Inv# (locked)</th><th>Box #</th><th>POD#</th><th>Part#</th><th>SN#</th><th>Qty</th><th>Reference</th></tr></thead>
+            <tbody>{% for row in shipment.rows %}<tr data-row-id="{{ row.row_id }}">
+                <th>{{ loop.index }}</th>
+                <td><input class="form-control" type="date" data-field="entry_date" value="{{ row.entry_date }}" aria-label="Date row {{ loop.index }}"></td>
+                <td>{{ row.invoice_number }}</td>
+                {% for field in ['box_number', 'pod_number', 'part_number', 'serial_number', 'quantity', 'Reference'] %}
+                <td><input class="form-control" style="min-width: 130px" type="{{ 'number' if field == 'quantity' else 'text' }}" {% if field == 'quantity' %}min="0.000001" step="any"{% else %}maxlength="{{ 10000 if field == 'Reference' else 255 }}"{% endif %} data-field="{{ field }}" value="{{ row.get(field, '') }}" aria-label="{{ field }} row {{ loop.index }}"></td>
+                {% endfor %}
+            </tr>{% endfor %}</tbody>
+        </table>
+    </div>
+    <div class="card-body"><details><summary>Generation details / exceptions ({{ shipment.exceptions|length }})</summary>
+        <dl class="row mt-3">{% for key, value in shipment.summary %}<dt class="col-sm-4">{{ key }}</dt><dd class="col-sm-8">{{ value }}</dd>{% endfor %}</dl>
+        {% for exception in shipment.exceptions %}<p>{{ exception|join(' · ') }}</p>{% endfor %}
+    </details></div>
+</section>
+<script type="application/json" id="template-state">{{ shipment|tojson }}</script>
+<script src="{{ url_for('static', filename='receiving_template.js') }}?v=2" defer></script>
