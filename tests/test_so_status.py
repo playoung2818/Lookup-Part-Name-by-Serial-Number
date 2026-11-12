@@ -69,7 +69,7 @@ class SOStatusTests(unittest.TestCase):
 
     def test_owner_specific_links(self):
         for status, owner, path, config in [
-            ('released_to_mes', 'MES', '/so/SO-20261511', 'MES_BASE_URL'),
+            ('released_to_mes', 'MES', '/production_planning', 'MES_BASE_URL'),
             ('needs_material_review', 'MRP', '/sales_orders/SO-20261511', 'MRP_BASE_URL'),
             ('needs_production_planning', 'MRP', '/sales_orders/SO-20261511', 'MRP_BASE_URL'),
         ]:

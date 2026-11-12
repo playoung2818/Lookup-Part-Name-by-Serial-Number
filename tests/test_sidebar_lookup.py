@@ -53,6 +53,10 @@ class SidebarLookupTests(unittest.TestCase):
                 self.assertNotIn('name="module"', html)
                 self.assertIn('placeholder="Serial / SO number"', html)
                 self.assertIn('action="/lookup"', html)
+                sidebar_form = html.split('class="sidebar-search"', 1)[1].split('</form>', 1)[0]
+                self.assertNotIn('<button', sidebar_form)
+                self.assertNotIn('Press Enter to search', sidebar_form)
+                self.assertNotIn('sidebar-search-hint', sidebar_form)
                 self.assertNotIn('value="<script>"', html)
                 self.assertLess(html.index('>SN# &amp; SO LOOKUP</div>'), html.index('class="sidebar-search"'))
                 self.assertLess(html.index('class="sidebar-search"'), html.index('>WAREHOUSE ACTIONS</div>'))

@@ -14,7 +14,6 @@
         <input class="form-control" id="sidebar-lookup-query" name="q" type="search" maxlength="255" required
                value="{{ query|default('') if so_mode else serial_number|default('') if not inventory_mode and not borrow_mode and not receiving_mode else '' }}"
                placeholder="Serial / SO number">
-        <button class="btn btn-primary" type="submit">Search</button>
     </form>
     <div class="nav-section-label nav-group-divider" id="warehouse-nav-label">WAREHOUSE ACTIONS</div>
     <nav class="sidebar-nav" aria-labelledby="warehouse-nav-label">

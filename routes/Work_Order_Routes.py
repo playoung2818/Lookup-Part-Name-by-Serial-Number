@@ -60,8 +60,9 @@ def index():
                 owner = workflow['owner']
                 if owner in ('MRP', 'MES'):
                     base = current_app.config[f'{owner}_BASE_URL'].rstrip('/')
-                    path = '/sales_orders/' if owner == 'MRP' else '/so/'
-                    workflow['system_url'] = base + path + quote(workflow['sales_order'], safe='')
+                    path = ('/sales_orders/' + quote(workflow['sales_order'], safe='')
+                            if owner == 'MRP' else '/production_planning')
+                    workflow['system_url'] = base + path
         except Exception:
             current_app.logger.exception('SO workflow status lookup failed')
             workflow_error = 'Workflow status is unavailable. Other lookup results are shown below.'
