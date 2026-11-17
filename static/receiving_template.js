@@ -17,8 +17,16 @@
         const response = await fetch(url, {method: 'POST', headers: {
             'Content-Type': 'application/json', 'X-CSRF-Token': host.dataset.csrf
         }, body: JSON.stringify({workspace_id: state.id, ...data})});
-        const result = await response.json();
-        if (!response.ok) throw Error(result.error || 'Save failed. Retry safely.');
+        const text = await response.text();
+        let result;
+        try { result = JSON.parse(text); }
+        catch (_) {
+            throw Error(`Save failed (HTTP ${response.status}): the server returned an error page instead of a save result. ` +
+                (response.status === 400 ? 'Your session may have expired. Reload Receiving and retry; the server draft is retained.' :
+                 'Keep this draft; report this HTTP status so the server error can be checked.'));
+        }
+        if (!response.ok) throw Error(result.error || `Save failed (HTTP ${response.status}). Retry safely.`);
+        if (!result.workspace) throw Error('The server did not confirm the saved workspace. Reload to check its status before retrying.');
         return result.workspace;
     };
     inputs.forEach(input => input.addEventListener('input', () => { dirty = true; }));

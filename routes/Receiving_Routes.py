@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 from flask import (Blueprint, abort, current_app, jsonify, redirect, render_template,
                    request, send_file, session, url_for)
 from sqlalchemy.exc import SQLAlchemyError
-from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.exceptions import BadRequest, InternalServerError, RequestEntityTooLarge
 
 from models.models import db
 from functions.receiving_workspace import (
@@ -34,7 +34,22 @@ def require_csrf():
     expected = session.get('receiving_csrf', '')
     supplied = request.headers.get('X-CSRF-Token', '') if request.is_json else request.form.get('csrf_token', '')
     if not expected or not supplied.isascii() or not secrets.compare_digest(supplied, expected):
-        abort(400)
+        abort(400, description='Receiving session verification failed. Reload Receiving and retry; the saved server draft is retained.')
+
+
+@receiving_bp.errorhandler(BadRequest)
+def invalid_receiving_request(error):
+    if request.is_json:
+        return jsonify(error=error.description), 400
+    return render_receiving(error.description, 400)
+
+
+@receiving_bp.errorhandler(InternalServerError)
+def receiving_server_error(error):
+    # Flask logs the original exception; never expose traceback or DB details.
+    if request.is_json:
+        return jsonify(error='Receiving server error (HTTP 500). Reload to check database status before retrying. Do not regenerate the draft.'), 500
+    return error
 
 
 def database_state(workspace, active):
