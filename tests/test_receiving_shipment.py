@@ -135,7 +135,7 @@ class ShipmentRouteTests(ShipmentTests):
                                'RECEIVING_REFERENCE_PATH': ''})
         self.app.instance_path = str(self.directory / 'instance')
         from test_receiving_workspace import FakeEngine, metadata
-        from functions.receiving_workspace import save_database, save_row, load_database, search_invoice
+        from functions.receiving_workspace import save_database, save_row, fill_serials, load_database, search_invoice
         self.engine = FakeEngine()
         table = metadata()
         for target, effect in (
@@ -144,6 +144,7 @@ class ShipmentRouteTests(ShipmentTests):
             ('routes.Receiving_Routes.search_invoice', lambda ignored, *args: search_invoice(self.engine, *args)),
             ('routes.Receiving_Routes.save_database', lambda ignored, state, persist: save_database(self.engine, state, persist)),
             ('routes.Receiving_Routes.save_row', lambda ignored, *args: save_row(self.engine, *args)),
+            ('routes.Receiving_Routes.fill_serials', lambda ignored, *args: fill_serials(self.engine, *args)),
             ('routes.Receiving_Routes.load_database', lambda ignored, state, persist: load_database(self.engine, state, persist)),
         ):
             patcher = patch(target, side_effect=effect)
@@ -356,6 +357,34 @@ class ShipmentRouteTests(ShipmentTests):
         result = self.client.post('/receiving/search', data={'csrf_token': self.csrf, 'invoice_number': 'missing',
                                   'workspace_id': current['id'], 'revision': current['revision']})
         self.assertEqual(result.status_code, 400)
+
+    def test_scan_and_sequence_fill_route_is_atomic_scoped_and_csrf_protected(self):
+        make_excel(self.serials, [['Customer PO No', 'Ordering Model', 'S/N', 'Invoice No']])
+        _, state = self.post_generate()
+        payload = {'workspace_id': state['id'],
+                   'group': {key: state['rows'][0][key] for key in ('box_number', 'pod_number', 'part_number')},
+                   'rows': [{key: self.row_payload(state, index, f'ABC00012{index + 7}')[key]
+                             for key in ('row_id', 'row_version', 'serial_number')} for index in (0, 1)]}
+        headers = {'X-CSRF-Token': self.csrf}
+        self.assertEqual(self.client.post('/receiving/serials', json=payload).status_code, 400)
+        self.assertEqual(self.client.post('/receiving/serials', json=dict(payload, quantity=2), headers=headers).status_code, 400)
+        other = self.app.test_client()
+        other.get('/receiving')
+        with other.session_transaction() as session:
+            other_csrf = session['receiving_csrf']
+        self.assertEqual(other.post('/receiving/serials', json=payload, headers={'X-CSRF-Token': other_csrf}).status_code, 409)
+        self.engine.fail_commit = 'after'
+        self.assertEqual(self.client.post('/receiving/serials', json=payload, headers=headers).status_code, 503)
+        writes = self.engine.writes
+        result = self.client.post('/receiving/serials', json=payload, headers=headers)
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json['saved_count'], 2)
+        self.assertEqual(self.engine.writes, writes)
+        self.assertEqual([row['serial_number'] for row in self.engine.rows], ['ABC000127', 'ABC000128', ''])
+        self.assertEqual(self.engine.rows[2]['quantity'], 3)
+        page = self.client.get('/receiving')
+        self.assertIn(b'Enter missing serials', page.data)
+        self.assertIn(b'readonly aria-label="SN for row', page.data)
 
     def test_upload_validation_and_no_table_creation(self):
         response = self.client.post('/receiving/generate', data={'csrf_token': self.csrf})

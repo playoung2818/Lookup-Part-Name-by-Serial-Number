@@ -44,13 +44,12 @@
     const message = document.getElementById('entry-message');
     const search = document.getElementById('entry-search'), blankOnly = document.getElementById('only-blank');
     const unsavedOnly = document.getElementById('only-unsaved');
-    let timer, queue = Promise.resolve(), inFlightId = null, duplicates = new Set(), cellGrid = null;
+    let queue = Promise.resolve(), inFlightId = null, duplicates = new Set(), serialTools = null;
     const showMessage = (text, error = false) => {
         message.textContent = text;
         message.className = `small mb-2 ${error ? 'entry-error' : 'entry-success'}`;
     };
     const refresh = (filter = true) => {
-        if (filter && cellGrid) cellGrid.clear();
         const byId = new Map(state.rows.map(row => [row.row_id, row]));
         duplicates = duplicateIds(state.rows.map(row => ({...row, serial_number: inputs.get(row.row_id).value})));
         let visible = 0, blanks = 0;
@@ -67,6 +66,8 @@
                 errors.has(row.row_id) ? `Error · #${row.db_id}` : inFlightId === row.row_id ? `Saving · #${row.db_id}` :
                 dirty ? `Changed · #${row.db_id}` : `Saved · #${row.db_id}`;
             tr.querySelector('.row-save-status').title = errors.get(row.row_id) || '';
+            tr.querySelector('.row-save').textContent = input.readOnly ? 'Correct' : 'Save';
+            tr.querySelector('.row-save').setAttribute('aria-label', `${input.readOnly ? 'Correct' : 'Save'} SN for database row ${row.db_id}`);
             if (filter) {
                 const text = [row.box_number, row.pod_number, row.part_number, input.value, row.Reference, row.invoice_number].join(' ').toUpperCase();
                 tr.hidden = !text.includes(query) || (blankOnly.checked && !blank) || (unsavedOnly.checked && !dirty && !errors.has(row.row_id));
@@ -88,6 +89,7 @@
             for (const cell of tr.querySelectorAll('[data-field]')) cell.textContent = row[cell.dataset.field] ?? '';
         }
         refresh(false);
+        if (serialTools) serialTools.refresh();
     };
     const postRow = async (id, edit) => {
         const response = await fetch('/receiving/row', {method: 'POST', credentials: 'same-origin', headers: {
@@ -99,7 +101,6 @@
         return result;
     };
     const flush = (onlyId = null) => {
-        clearTimeout(timer);
         queue = queue.catch(() => {}).then(async () => {
             const failed = new Set();
             while (true) {
@@ -116,7 +117,9 @@
                     const latest = pending.get(id);
                     if (latest && latest.value === edit.value) pending.delete(id);
                     else if (latest) latest.version = result.workspace.rows.find(row => row.row_id === id).row_version;
-                    errors.delete(id); sync(result.workspace);
+                    errors.delete(id);
+                    if (!pending.has(id)) inputs.get(id).readOnly = true;
+                    sync(result.workspace);
                     const saved = state.rows.find(row => row.row_id === id);
                     showMessage(`SN saved directly to database row #${saved.db_id}.`);
                 } catch (error) {
@@ -133,54 +136,50 @@
         const existing = pending.get(id);
         if (input.value.trim() === row.serial_number && inFlightId !== id) { pending.delete(id); errors.delete(id); }
         else pending.set(id, {value: input.value, version: existing ? existing.version : row.row_version});
-        errors.delete(id); refresh(false); showMessage('SN changed — saving this row to database…');
-        clearTimeout(timer); timer = setTimeout(() => flush(), 700);
+        errors.delete(id); refresh(false);
+        if (serialTools) serialTools.refresh();
+        showMessage('Correction entered. Press Enter or Save, or leave the cell to save it.');
     };
-    const visibleInputs = () => tableRows.filter(row => !row.hidden).map(row => inputs.get(row.dataset.rowId));
+    const unconfirmedFill = () => serialTools && serialTools.hasUnconfirmed();
     const focusInput = input => { if (input) { input.focus(); input.select(); input.scrollIntoView({block: 'nearest', inline: 'nearest'}); } };
     for (const [id, input] of inputs) {
-        input.addEventListener('input', () => changed(input));
+        input.addEventListener('input', () => { if (!input.readOnly) changed(input); });
         input.addEventListener('blur', () => { if (pending.has(id)) flush(id); });
         input.addEventListener('keydown', event => {
-            if (!['Enter', 'ArrowDown', 'ArrowUp'].includes(event.key)) return;
+            if (event.key !== 'Enter' || input.readOnly) return;
             event.preventDefault();
-            const visible = visibleInputs(), index = visible.indexOf(input);
-            const next = visible[index + (event.shiftKey || event.key === 'ArrowUp' ? -1 : 1)];
             if (pending.has(id)) flush(id);
-            refresh(); focusInput(next && !next.closest('tr').hidden ? next : null);
+            else { input.readOnly = true; refresh(false); }
         });
         input.addEventListener('paste', event => {
-            const text = event.clipboardData.getData('text/plain');
-            if (!/[\r\n\t]/.test(text)) return;
-            event.preventDefault();
-            try {
-                const values = parseColumn(text), visible = visibleInputs(), start = visible.indexOf(input);
-                if (values.length > visible.length - start) throw Error('Not enough visible rows. Nothing changed.');
-                values.forEach((value, index) => { const target = visible[start + index]; target.value = value; changed(target); });
-                focusInput(visible[Math.min(start + values.length, visible.length - 1)]);
-                flush();
-            } catch (error) { showMessage(error.message, true); }
+            if (/[\r\n\t]/.test(event.clipboardData.getData('text/plain'))) {
+                event.preventDefault(); showMessage('Correct one serial at a time. Use sequence fill above for consecutive serials.', true);
+            }
         });
         input.closest('tr').querySelector('.row-save').addEventListener('click', () => {
+            if (unconfirmedFill()) { showMessage('Resolve the unconfirmed scan or sequence before correcting a row.', true); return; }
+            if (input.readOnly) { input.readOnly = false; refresh(false); focusInput(input); return; }
             if (!pending.has(id) && input.value.trim() !== state.rows.find(row => row.row_id === id).serial_number) changed(input);
-            flush(id);
+            if (pending.has(id)) flush(id);
+            else { input.readOnly = true; refresh(false); }
         });
     }
     search.addEventListener('input', () => refresh());
     blankOnly.addEventListener('change', () => refresh()); unsavedOnly.addEventListener('change', () => refresh());
     document.getElementById('show-metadata').addEventListener('change', event => table.classList.toggle('show-metadata', event.target.checked));
     document.getElementById('refresh-database').addEventListener('click', () => {
-        if (!pending.size || window.confirm('Reload from database? Unconfirmed cell entries on this page will be discarded.')) location.reload();
+        if (unconfirmedFill()) { showMessage('Resolve the scan or sequence using Retry same save or Reload database values above.', true); return; }
+        if (!pending.size || window.confirm('Reload from database? Unconfirmed corrections on this page will be discarded.')) location.reload();
     });
     document.addEventListener('keydown', event => {
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); flush(); }
     });
     window.addEventListener('beforeunload', event => {
-        if (pending.size || inFlightId) { event.preventDefault(); event.returnValue = ''; }
+        if (pending.size || inFlightId || unconfirmedFill()) { event.preventDefault(); event.returnValue = ''; }
     });
     for (const button of document.querySelectorAll('[data-download]')) button.addEventListener('click', async () => {
         await flush();
-        if (pending.size) { showMessage('Resolve unsaved rows before downloading.', true); return; }
+        if (pending.size || unconfirmedFill()) { showMessage('Resolve unsaved corrections, scans or sequences before downloading.', true); return; }
         try {
             const response = await fetch('/receiving/download', {method: 'POST', body: new URLSearchParams({
                 csrf_token: csrf, workspace_id: state.id, format: button.dataset.download
@@ -193,21 +192,26 @@
     });
     document.getElementById('shipment-upload-form').addEventListener('submit', async event => {
         event.preventDefault(); await flush();
-        if (pending.size) { showMessage('Resolve unsaved cell entries before generating the next shipment.', true); return; }
+        if (pending.size || unconfirmedFill()) { showMessage('Resolve unsaved corrections, scans or sequences before generating the next shipment.', true); return; }
         if (!window.confirm('Generate a new draft template? No database records will be written until you review and save it.')) return;
         event.target.elements.workspace_id.value = state.id; event.target.elements.revision.value = state.revision;
         event.target.submit();
     });
-    if (root.ReceivingGrid) cellGrid = root.ReceivingGrid.attach({
-        table,
-        getRows: () => tableRows.filter(row => !row.hidden).map(row => [row.querySelector('.sn-cell')]),
-        validate: root.ReceivingGrid.validateValue,
-        onMessage: showMessage
+    if (root.ReceivingSerials && document.getElementById('serial-tools')) serialTools = root.ReceivingSerials.attach({
+        host: document.getElementById('serial-tools'), getState: () => state, sync, csrf,
+        beforeSave: async () => {
+            await flush();
+            if (pending.size) throw Error('Resolve unsaved row corrections before scanning or filling a sequence.');
+        },
+        onBusy: busy => {
+            for (const input of inputs.values()) input.disabled = busy;
+            for (const button of table.querySelectorAll('.row-save')) button.disabled = busy;
+        }
     });
     const invoiceSearch = document.getElementById('invoice-search-form');
     if (invoiceSearch) invoiceSearch.addEventListener('submit', async event => {
         event.preventDefault(); await flush();
-        if (pending.size) { showMessage('Resolve unsaved serial numbers before switching invoices.', true); return; }
+        if (pending.size || unconfirmedFill()) { showMessage('Resolve unsaved corrections, scans or sequences before switching invoices.', true); return; }
         invoiceSearch.elements.workspace_id.value = state.id;
         invoiceSearch.elements.revision.value = state.revision;
         invoiceSearch.submit();
