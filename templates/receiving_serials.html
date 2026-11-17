@@ -1,0 +1,32 @@
+<section class="serial-tools card-body border-bottom" id="serial-tools" aria-labelledby="serial-tools-heading">
+    <h2 class="h5 mb-3" id="serial-tools-heading">Enter missing serials</h2>
+    <label for="serial-group" class="form-label">Carton / POD / product</label>
+    <select id="serial-group" class="form-select" aria-describedby="serial-progress"></select>
+    <p id="serial-progress" class="small mt-2 mb-3" role="status" aria-live="polite"></p>
+    <form id="serial-scan-form" class="serial-scan-form">
+        <label for="serial-scan" class="form-label">Scan a serial number</label>
+        <div class="serial-scan-controls">
+            <input id="serial-scan" class="form-control" type="text" maxlength="255" autocomplete="off" autocapitalize="off" spellcheck="false" required aria-describedby="serial-scan-help">
+            <button type="submit" class="btn btn-primary">Save serial</button>
+        </div>
+        <p id="serial-scan-help" class="small text-muted mt-2 mb-0">Press Enter after each scan. Wait for Saved before scanning the next item. Existing serials and bulk quantities stay unchanged.</p>
+    </form>
+    <details class="serial-sequence mt-3">
+        <summary>Fill consecutive serials</summary>
+        <form id="sequence-form" class="row g-2 align-items-end mt-1">
+            <div class="col-12 col-md-7"><label for="sequence-first" class="form-label">First serial</label><input id="sequence-first" class="form-control" type="text" maxlength="255" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="e.g. ABC000127" required aria-describedby="sequence-help"></div>
+            <div class="col-5 col-md-2"><label for="sequence-count" class="form-label">Quantity</label><input id="sequence-count" class="form-control" type="number" min="1" max="20000" step="1" value="1" required></div>
+            <div class="col-7 col-md-3"><button id="sequence-preview-button" type="submit" class="btn btn-outline-primary w-100">Preview sequence</button></div>
+        </form>
+        <p id="sequence-help" class="small text-muted mt-2 mb-0">Only the final digits increase. Leading zeros stay intact. The sequence cannot cross into another group.</p>
+        <div id="sequence-preview" class="sequence-preview mt-3" hidden>
+            <p id="sequence-preview-text" class="mb-2"></p>
+            <button id="sequence-save" type="button" class="btn btn-primary">Save sequence to database</button>
+        </div>
+    </details>
+    <p id="serial-status" class="serial-status small mt-3 mb-0" role="status" aria-live="polite">Choose a group to start. Every confirmed save updates serial-number lookup immediately.</p>
+    <div class="d-flex gap-2 flex-wrap mt-2">
+        <button id="serial-retry" type="button" class="btn btn-outline-primary" hidden>Retry same save</button>
+        <button id="serial-reload" type="button" class="btn btn-outline-secondary" hidden>Reload database values</button>
+    </div>
+</section>

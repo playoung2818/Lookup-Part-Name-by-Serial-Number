@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / 'tests'))
 
 from app import create_app
 from openpyxl import load_workbook
-from functions.receiving_workspace import save_database, save_row, load_database
+from functions.receiving_workspace import save_database, save_row, fill_serials, load_database
 from test_receiving_workspace import FakeEngine, metadata, workbook
 
 
@@ -53,5 +53,6 @@ if __name__ == '__main__':
          patch('functions.receiving_workspace.receiving_table', return_value=table), \
          patch('routes.Receiving_Routes.save_database', side_effect=fixture_save), \
          patch('routes.Receiving_Routes.save_row', side_effect=lambda ignored, *args: save_row(engine, *args)), \
+         patch('routes.Receiving_Routes.fill_serials', side_effect=lambda ignored, *args: fill_serials(engine, *args)), \
          patch('routes.Receiving_Routes.load_database', side_effect=lambda ignored, state, persist: load_database(engine, state, persist)):
         app.run(host='0.0.0.0', port=args.port, debug=False, use_reloader=False)

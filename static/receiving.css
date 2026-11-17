@@ -1,4 +1,20 @@
 .receiving-page { max-width: 1920px; }
+.serial-tools { max-width: 960px; }
+.serial-tools .form-label { font-weight: 600; }
+.serial-scan-controls { display: flex; gap: .75rem; }
+.serial-scan-controls input { min-width: 0; min-height: 48px; font-size: 1.25rem; font-family: ui-monospace, Consolas, monospace; }
+.serial-scan-controls button { flex-shrink: 0; }
+.serial-sequence > summary { cursor: pointer; color: #164b8a; padding: .5rem 0; }
+.serial-status { min-height: 1.5em; color: #137047; }
+.serial-status.serial-error { color: #b42318; font-weight: 600; }
+.sequence-preview { background: #eef5ff; padding: 1rem; overflow-wrap: anywhere; }
+#serial-progress { font-variant-numeric: tabular-nums; }
+#entry-table .sn-input[readonly] { background: transparent; border-color: transparent; box-shadow: none; }
+#entry-table .sn-cell:has(input[readonly]) { background: transparent; }
+@media (max-width: 575px) {
+    .serial-scan-controls { flex-direction: column; }
+    .serial-scan-controls button { min-height: 44px; }
+}
 #template-table td.grid-selected, #entry-table td.grid-selected {
     background: #dbeafe !important;
     box-shadow: inset 0 0 0 2px #2563eb;

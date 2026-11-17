@@ -433,6 +433,98 @@ def save_row(engine, state, row_id, value, expected_version, persist):
     return row['db_id']
 
 
+SERIAL_GROUP_FIELDS = ('box_number', 'pod_number', 'part_number')
+
+
+def fill_serials(engine, state, group, changes, persist):
+    """Fill explicit blank unit slots atomically. Exact lost-response retries are safe.
+
+    Keep the original row IDs/versions on retry, never allocate new slots after an
+    uncertain response. No inserts, schema changes, quantity edits or overwrites.
+    """
+    if state.get('mode', 'entry') != 'entry' or state.get('pending'):
+        raise WorkspaceConflict('Save the reviewed template and resolve pending writes before scanning.')
+    if (not isinstance(group, dict) or set(group) != set(SERIAL_GROUP_FIELDS)
+            or any(not isinstance(value, str) or len(value) > 255 for value in group.values())):
+        raise ValueError('Choose one carton, POD and product group.')
+    if not isinstance(changes, list) or not 1 <= len(changes) <= 20000:
+        raise ValueError('Fill between 1 and 20,000 serial slots at a time.')
+    by_id = {row['row_id']: row for row in state['rows']}
+    selected, seen_ids, seen_serials = [], set(), set()
+    for change in changes:
+        if not isinstance(change, dict) or set(change) != {'row_id', 'row_version', 'serial_number'}:
+            raise ValueError('Only row IDs, versions and serial numbers are accepted.')
+        row_id = change['row_id']
+        if not isinstance(row_id, str) or row_id not in by_id or row_id in seen_ids:
+            raise ValueError('Unknown or repeated receiving row.')
+        row = by_id[row_id]
+        if row['db_id'] is None or not identifier(change['row_version']):
+            raise ValueError('Each serial slot needs a database ID and version.')
+        temporary = {'rows': [deepcopy(row)], 'revision': 0, 'pending': None}
+        update_serials(temporary, [{'row_id': row_id, 'serial_number': change['serial_number']}])
+        value = temporary['rows'][0]['serial_number']
+        key = serial_key(value)
+        if key in ('', 'NA'):
+            raise ValueError('Enter an actual serial number, not a blank or NA placeholder.')
+        if key in seen_serials:
+            raise ValueError(f'Duplicate SN {value} in this fill. Nothing saved.')
+        if any(clean(row[field]) != group[field] for field in SERIAL_GROUP_FIELDS) or row['quantity'] != 1:
+            raise WorkspaceConflict('All slots must be Qty 1 rows in the selected group.')
+        seen_ids.add(row_id)
+        seen_serials.add(key)
+        selected.append((row, change['row_version'], value))
+    scope = state.get('invoice_scope') or single_invoice(state['rows'])
+    with engine.connect() as connection:
+        try:
+            lock_receiving(connection)
+            table = receiving_table(connection)
+            condition = or_(table.c.id.in_([row['db_id'] for row, _, _ in selected]),
+                            func.upper(func.trim(table.c.serial_number)).in_(seen_serials))
+            records = [dict(record) for record in connection.execute(select(table).where(condition)).mappings()]
+            current_by_id = {record['id']: record for record in records}
+            if len(current_by_id) != len(records):
+                raise WorkspaceConflict('Receiving IDs are not unique. Nothing saved.')
+            serial_ids = {}
+            for record in records:
+                serial_ids.setdefault(serial_key(record['serial_number']), set()).add(record['id'])
+            plans = []
+            for row, version, value in selected:
+                current = current_by_id.get(row['db_id'])
+                if current is None:
+                    raise WorkspaceConflict('A serial slot was deleted. Refresh before scanning again.')
+                if (clean(current['invoice_number']) != scope or clean(row['invoice_number']) != scope
+                        or any(clean(current[field]) != group[field] for field in SERIAL_GROUP_FIELDS)
+                        or current['quantity'] != 1):
+                    raise WorkspaceConflict('A serial slot moved or changed group/quantity. Refresh before scanning again.')
+                if serial_ids.get(serial_key(value), set()) - {current['id']}:
+                    raise WorkspaceConflict(f'SN {value} already exists in another receiving row. Nothing saved.')
+                # An exact retry after DB commit is read-only, even with an old version.
+                if clean(current['serial_number']) != value:
+                    if clean(current['serial_number']):
+                        raise WorkspaceConflict('A serial slot is no longer blank. Nothing overwritten; refresh.')
+                    if snapshot([current]) != version:
+                        raise WorkspaceConflict('A serial slot changed since selection. Nothing saved; refresh.')
+                plans.append((row, current, value))
+            saved = []
+            for row, current, value in plans:
+                if clean(current['serial_number']) != value:
+                    current = dict(connection.execute(table.update().where(
+                        table.c.id == current['id'], table.c.invoice_number == scope
+                    ).values(serial_number=value).returning(table)).mappings().one())
+                saved.append((row, current))
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+    for row, current in saved:
+        row.update(serial_number=clean(current['serial_number']), saved_serial=clean(current['serial_number']),
+                   db_snapshot=snapshot([current]), db_missing=False)
+    state['database_saved_at'] = now()
+    state['revision'] += 1
+    persist(state)
+    return len(saved)
+
+
 def save_database(engine, state, persist):
     """Upsert workspace rows by stable IDs; no deletes, no schema changes.
 

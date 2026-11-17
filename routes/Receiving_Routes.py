@@ -12,7 +12,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 from models.models import db
 from functions.receiving_workspace import (
     WorkspaceConflict, WorkspaceStore, identifier, load_database, public_state,
-    save_database, save_row, update_template, search_invoice,
+    save_database, save_row, fill_serials, update_template, search_invoice,
 )
 
 receiving_bp = Blueprint('receiving', __name__)
@@ -213,6 +213,27 @@ def save_receiving_row():
     except (SQLAlchemyError, OSError):
         current_app.logger.exception('Receiving row save not confirmed')
         return jsonify(error='Database save was not confirmed. Keep the entered SN and retry this row; retries will not insert duplicate records.'), 503
+
+
+@receiving_bp.route('/receiving/serials', methods=['POST'])
+def fill_receiving_serials():
+    """Scan one serial or fill an explicit batch into blank, group-scoped slots."""
+    try:
+        data = workspace_payload()
+        if set(data) != {'workspace_id', 'group', 'rows'}:
+            raise ValueError('Submit the selected group and serial slots only.')
+        with store().locked() as workspace:
+            state = workspace.require(data['workspace_id'])
+            count = fill_serials(db.engine, state, data['group'], data['rows'], workspace.persist)
+            result = database_state(workspace, state)
+        return jsonify(workspace=result, saved_count=count)
+    except WorkspaceConflict as exc:
+        return jsonify(error=str(exc)), 409
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    except (SQLAlchemyError, OSError):
+        current_app.logger.exception('Receiving serial fill not confirmed')
+        return jsonify(error='Save was not confirmed. Retry the same serial slots; do not assign a new group or sequence.'), 503
 
 
 @receiving_bp.route('/receiving/save', methods=['POST'])

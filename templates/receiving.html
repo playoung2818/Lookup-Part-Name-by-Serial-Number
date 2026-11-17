@@ -7,9 +7,10 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="icon" href="{{ url_for('static', filename='Icon.ico') }}">
     <link href="{{ url_for('static', filename='erp.css') }}?v=1" rel="stylesheet">
-    <link href="{{ url_for('static', filename='receiving.css') }}?v=8" rel="stylesheet">
+    <link href="{{ url_for('static', filename='receiving.css') }}?v=9" rel="stylesheet">
     <script src="{{ url_for('static', filename='receiving_grid.js') }}?v=1" defer></script>
-    <script src="{{ url_for('static', filename='receiving.js') }}?v=8" defer></script>
+    <script src="{{ url_for('static', filename='receiving_serials.js') }}?v=1" defer></script>
+    <script src="{{ url_for('static', filename='receiving.js') }}?v=9" defer></script>
 </head>
 <body class="bg-light">
 <main class="container-fluid receiving-page py-3">
@@ -30,15 +31,16 @@
     <section class="card" id="receiving-workspace" data-workspace="{{ shipment.id }}" data-csrf="{{ session.receiving_csrf }}">
         <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
             <div><h1 class="h5 mb-1">Receiving entry</h1><span>Inv# <strong>{{ shipment.rows[0].invoice_number }}</strong> · Date {{ shipment.rows[0].entry_date }}</span></div>
-            <span class="text-muted small">Loaded from database · each SN edit saves its own row.</span>
+            <span class="text-muted small">Live database records · unfinished shipments remain searchable.</span>
         </div>
+        {% include 'receiving_serials.html' %}
         <div class="workspace-toolbar card-body border-bottom">
             <div class="d-flex gap-2 flex-wrap align-items-center mb-2">
                 <button type="button" class="btn btn-outline-primary" id="refresh-database">Refresh from database</button>
                 <button type="button" class="btn btn-outline-secondary" data-download="xlsx">Download Excel</button>
                 <button type="button" class="btn btn-outline-secondary" data-download="docx">Incoming Word draft</button>
             </div>
-            <div id="entry-message" class="small mb-2" role="status" aria-live="polite">Rows loaded from database. SN edits save individually after a short pause, on Enter, or when you leave the cell.</div>
+            <div id="entry-message" class="small mb-2" role="status" aria-live="polite">Records loaded from the database. Use scanning or sequence fill above. To fix a serial below, choose Correct.</div>
             <div class="row g-2 align-items-center">
                 <div class="col-lg-5"><label for="entry-search" class="visually-hidden">Filter receiving rows</label><input id="entry-search" type="search" class="form-control" placeholder="Filter by box, POD, part, SN or Reference…"></div>
                 <div class="col-auto"><label class="form-check-label"><input class="form-check-input" id="only-blank" type="checkbox"> Blank SN only</label></div>
@@ -46,21 +48,21 @@
                 <div class="col-auto"><label class="form-check-label"><input class="form-check-input" id="show-metadata" type="checkbox"> Show date / invoice</label></div>
                 <div class="col-auto"><span id="entry-count" class="small"></span></div>
             </div>
-            <p class="small text-muted mt-2 mb-0">Select SN cells by dragging, Shift-clicking or Shift+Arrow keys, then paste one Excel column. Other columns are locked. Scan/type SN, then <strong>Enter</strong> for the next visible row; <strong>Shift+Enter</strong> goes back. Paste a single Excel column to fill consecutive visible rows. Bulk rows also accept SN values; their quantities stay unchanged. Each cell saves directly to its existing database row. Use its Save button to retry an error.</p>
+            <p class="small text-muted mt-2 mb-0">Records are read-only until you choose Correct on a row. Save a correction with Enter, Save, or by leaving the cell. Corrections change only that row's serial, never its quantity.</p>
         </div>
         <noscript><div class="alert alert-warning m-3">Enable JavaScript to edit serial numbers and save this table.</div></noscript>
         <div class="entry-grid" tabindex="-1">
             <table class="table table-sm table-bordered align-middle mb-0" id="entry-table">
-                <thead><tr><th scope="col">#</th><th class="metadata-col" scope="col">Date</th><th class="metadata-col" scope="col">Inv#</th><th scope="col">Box #</th><th scope="col">POD#</th><th scope="col">Part#</th><th class="sn-heading" scope="col">SN# — scan / type here</th><th scope="col">Qty</th><th scope="col">Reference</th><th scope="col">Database status</th></tr></thead>
+                <thead><tr><th scope="col">#</th><th class="metadata-col" scope="col">Date</th><th class="metadata-col" scope="col">Inv#</th><th scope="col">Box #</th><th scope="col">POD#</th><th scope="col">Part#</th><th class="sn-heading" scope="col">Serial number</th><th scope="col">Qty</th><th scope="col">Reference</th><th scope="col">Database status</th></tr></thead>
                 <tbody>
                 {% for row in shipment.rows %}
                 <tr data-row-id="{{ row.row_id }}" class="{{ 'db-pending' if row.db_id is none or row.serial_number != row.saved_serial else 'db-saved' }}">
                     <th class="row-number" scope="row">{{ loop.index }}</th>
                     <td class="metadata-col" data-field="entry_date">{{ row.entry_date }}</td><td class="metadata-col" data-field="invoice_number">{{ row.invoice_number }}</td>
                     <td data-field="box_number">{{ row.box_number }}</td><td data-field="pod_number">{{ row.pod_number }}</td><td class="part-cell" data-field="part_number">{{ row.part_number }}</td>
-                    <td class="sn-cell"><input type="text" class="form-control sn-input" value="{{ row.serial_number }}" maxlength="255" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="SN for row {{ loop.index }}, {{ row.part_number }}" placeholder="Scan or enter SN"></td>
+                    <td class="sn-cell"><input type="text" class="form-control sn-input" value="{{ row.serial_number }}" maxlength="255" autocomplete="off" autocapitalize="off" spellcheck="false" readonly aria-label="SN for row {{ loop.index }}, {{ row.part_number }}" placeholder="Not entered"></td>
                     <td class="text-end" data-field="quantity">{{ '%g'|format(row.quantity) if row.quantity is number else '' }}</td><td class="reference-cell" data-field="Reference">{{ row.Reference }}</td>
-                    <td class="small"><span class="row-save-status">Saved · #{{ row.db_id }}</span><button type="button" class="btn btn-sm btn-outline-success row-save ms-1" aria-label="Save SN row {{ loop.index }}">Save</button></td>
+                    <td class="small"><span class="row-save-status">Saved · #{{ row.db_id }}</span><button type="button" class="btn btn-sm btn-outline-success row-save ms-1" aria-label="Correct SN row {{ loop.index }}">Correct</button></td>
                 </tr>
                 {% endfor %}
                 </tbody>
