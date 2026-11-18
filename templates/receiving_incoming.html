@@ -1,0 +1,14 @@
+<section class="card mb-3" id="incoming-form-tool" aria-labelledby="incoming-form-heading">
+    <div class="card-header"><h2 class="h6 mb-0 fw-bold" id="incoming-form-heading">4. Generate incoming form</h2></div>
+    <div class="card-body">
+        <p class="small">Generate a Word incoming form from saved receiving records for an exact invoice number. No invoice needs to be loaded into the entry table. Records are grouped by box, product and POD, with quantities summed and distinct serials combined. This does not change the database.</p>
+        <form id="incoming-form" action="{{ url_for('receiving.generate_incoming_form') }}" method="post" enctype="multipart/form-data" class="row g-3">
+            <input type="hidden" name="csrf_token" value="{{ session.receiving_csrf }}">
+            <div class="col-md-4"><label for="incoming-invoice" class="form-label">Exact invoice number</label><input id="incoming-invoice" name="invoice_number" class="form-control" type="text" maxlength="255" placeholder="e.g. 8003593" required></div>
+            <div class="col-md-8"><label for="incoming-template" class="form-label">Word template (.docx, optional)</label><input id="incoming-template" name="template" type="file" accept=".docx" class="form-control"><div class="form-text">Leave empty to use OneDrive - neousys-tech\Share NTA Warehouse\01 Incoming\Incoming Form Template.docx relative to the current Windows user's home folder. Upload a template if the shared file is unavailable. The original template is never overwritten.</div></div>
+            <div class="col-12"><label class="form-check-label"><input name="inspection_passed" value="yes" type="checkbox" class="form-check-input"> I confirm inspection has passed; mark IQC and the receiving result PASS.</label><div class="form-text">Without confirmation the generated form says Pending. Generating a report does not perform an inspection.</div></div>
+            <div class="col-12"><button id="incoming-generate" type="submit" class="btn btn-primary">Generate incoming form (.docx)</button></div>
+        </form>
+        <p id="incoming-status" class="small mt-3 mb-0" role="status" aria-live="polite"></p>
+    </div>
+</section>

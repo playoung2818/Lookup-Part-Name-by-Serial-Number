@@ -8,15 +8,17 @@
     <link rel="icon" href="{{ url_for('static', filename='Icon.ico') }}">
     <link href="{{ url_for('static', filename='erp.css') }}?v=1" rel="stylesheet">
     <link href="{{ url_for('static', filename='receiving.css') }}?v=9" rel="stylesheet">
-    <script src="{{ url_for('static', filename='receiving_grid.js') }}?v=1" defer></script>
-    <script src="{{ url_for('static', filename='receiving_serials.js') }}?v=1" defer></script>
-    <script src="{{ url_for('static', filename='receiving.js') }}?v=9" defer></script>
+    <script src="{{ url_for('static', filename='receiving_grid.js') }}?v=3" defer></script>
+    <script src="{{ url_for('static', filename='receiving_serials.js') }}?v=4" defer></script>
+    <script src="{{ url_for('static', filename='receiving.js') }}?v=16" defer></script>
+    <script src="{{ url_for('static', filename='receiving_incoming.js') }}?v=1" defer></script>
 </head>
 <body class="bg-light">
 <main class="container-fluid receiving-page py-3">
     {% include 'brand_header.html' %}
     {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
     {% include 'receiving_shipment.html' %}
+    {% include 'receiving_incoming.html' %}
     {% if shipment and shipment.mode == 'draft' and not shipment.pending %}
         {% include 'receiving_template.html' %}
     {% endif %}
@@ -33,14 +35,13 @@
             <div><h1 class="h5 mb-1">Receiving entry</h1><span>Inv# <strong>{{ shipment.rows[0].invoice_number }}</strong> · Date {{ shipment.rows[0].entry_date }}</span></div>
             <span class="text-muted small">Live database records · unfinished shipments remain searchable.</span>
         </div>
-        {% include 'receiving_serials.html' %}
         <div class="workspace-toolbar card-body border-bottom">
             <div class="d-flex gap-2 flex-wrap align-items-center mb-2">
                 <button type="button" class="btn btn-outline-primary" id="refresh-database">Refresh from database</button>
                 <button type="button" class="btn btn-outline-secondary" data-download="xlsx">Download Excel</button>
                 <button type="button" class="btn btn-outline-secondary" data-download="docx">Incoming Word draft</button>
             </div>
-            <div id="entry-message" class="small mb-2" role="status" aria-live="polite">Records loaded from the database. Use scanning or sequence fill above. To fix a serial below, choose Correct.</div>
+            <div id="entry-message" class="small mb-2" role="status" aria-live="polite">Records loaded from the database. Click a blank SN cell to scan. To fix a saved serial, choose Correct. Section 2 is a standalone serial-list generator and does not save records.</div>
             <div class="row g-2 align-items-center">
                 <div class="col-lg-5"><label for="entry-search" class="visually-hidden">Filter receiving rows</label><input id="entry-search" type="search" class="form-control" placeholder="Filter by box, POD, part, SN or Reference…"></div>
                 <div class="col-auto"><label class="form-check-label"><input class="form-check-input" id="only-blank" type="checkbox"> Blank SN only</label></div>
@@ -48,7 +49,8 @@
                 <div class="col-auto"><label class="form-check-label"><input class="form-check-input" id="show-metadata" type="checkbox"> Show date / invoice</label></div>
                 <div class="col-auto"><span id="entry-count" class="small"></span></div>
             </div>
-            <p class="small text-muted mt-2 mb-0">Records are read-only until you choose Correct on a row. Save a correction with Enter, Save, or by leaving the cell. Corrections change only that row's serial, never its quantity.</p>
+            <p class="small text-muted mt-2 mb-0">Click any blank serial cell to scan directly into it, regardless of quantity. Populated serials remain read-only until you choose Correct. Enter saves and moves to the next visible blank SN row in the same carton / POD / product group, ready for the next scan. Wait for the move before scanning again. Save or leaving the cell saves without moving. Existing serials are skipped; quantities stay unchanged and saving errors keep you on the current row.</p>
+            <p class="small text-muted mb-0">Paste a serial column: drag over SN cells, Shift-click the last cell, or use Shift+Arrow to select a range, then Ctrl+V / Cmd+V. Or click one starting SN cell to paste down visible rows. A copied list must match a selected range. Blank SN cells accept paste directly at any quantity; only saved serials require Correct first. Values and local duplicates are checked before any edits; database saves happen individually, so check each row for errors.</p>
         </div>
         <noscript><div class="alert alert-warning m-3">Enable JavaScript to edit serial numbers and save this table.</div></noscript>
         <div class="entry-grid" tabindex="-1">

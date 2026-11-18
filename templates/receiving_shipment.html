@@ -17,8 +17,9 @@
         </form>
     </div>
 </details>
+{% include 'receiving_serials.html' %}
 <section class="card mb-3">
-    <div class="card-header"><strong>2. Reload entry by INV# — serial numbers only</strong></div>
+    <div class="card-header"><strong>3. Reload entry by INV# — serial numbers only</strong></div>
     <form id="invoice-search-form" class="card-body d-flex flex-wrap gap-2 align-items-center" action="{{ url_for('receiving.reload_invoice') }}" method="post">
         <input type="hidden" name="csrf_token" value="{{ session.receiving_csrf }}">
         <input type="hidden" name="workspace_id" value="{{ shipment.id if shipment else '' }}">

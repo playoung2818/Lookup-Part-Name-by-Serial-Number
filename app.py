@@ -52,8 +52,7 @@ def create_app(test_config=None):
 def main():
     logging.basicConfig(level=Config.LOG_LEVEL)
     app = create_app()
-    with app.app_context():
-        db.create_all()
+    # Never create or migrate tables on startup; schema changes require approval.
     app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
 

@@ -1,7 +1,6 @@
-from flask import Blueprint, render_template, request, jsonify, abort, send_file, redirect, url_for
+from flask import Blueprint, render_template, request, abort, send_file, redirect, url_for, current_app
 import json
 import glob
-import re
 from models.models import ReceivingLog
 from sqlalchemy.sql import text
 from tempfile import NamedTemporaryFile
@@ -11,15 +10,32 @@ import logging
 
 from functions.utils import extract_useful_number
 from functions.wo_lookup import find_by_serial
-from functions.Validation import validate_sn_part_matches_via_api 
-try:
-    from docx import Document
-except Exception:
-    Document = None
+from functions.Validation import validate_sn_part_matches_via_api
+from functions.serial_lookup import find_receiving_serial, record_dict, serial_key, PLACEHOLDERS
 
 index_bp = Blueprint('index', __name__)
-INVOICE_DIR = r"C:\Users\Admin\OneDrive - neousys-tech\Share NTA Warehouse\01 Incoming\HQ Shipping Documents"
-OUTGOING_DIR = r"C:\Users\Admin\OneDrive - neousys-tech\Share NTA Warehouse\03 Outgoing (WOOF)"
+
+
+def invoice_dir():
+    return current_app.config['INVOICE_DIR']
+
+
+def outgoing_dir():
+    return current_app.config['OUTGOING_DIR']
+
+
+def require_folder(path, label):
+    if not path or not os.path.isdir(path):
+        current_app.logger.warning('%s folder unavailable: %s', label, path)
+        abort(503, description=f'The {label} folder is unavailable. Check OneDrive sync or the {label.upper()}_DIR setting.')
+    return os.path.realpath(path)
+
+
+def inside(base, path):
+    try:
+        return os.path.commonpath([base, os.path.realpath(path)]) == base
+    except ValueError:
+        return False
 
 
 def _deduplicate_outgoing_rows(rows):
@@ -148,6 +164,7 @@ def index():
     entry_date = ""
     invoice_number = ""
     pod_number = ""
+    receiving_matches = []
     found = False
     message = ""
     prune_input = ""
@@ -165,16 +182,22 @@ def index():
             serial_number = lookup_data.get('serial_number', '').strip()
             if serial_number:
                 try:
-                    found_entry = ReceivingLog.query.filter_by(serial_number=serial_number).first()
-                    if found_entry:
-                        part_name = found_entry.part_number
-                        entry_date = found_entry.entry_date.strftime('%m-%d-%Y') if found_entry.entry_date else ""
-                        invoice_number = found_entry.invoice_number or ""
-                        pod_number = found_entry.pod_number or ""
-                        message = "Part Found!"
+                    if serial_key(serial_number) in PLACEHOLDERS:
+                        message = "Enter an actual serial number; blank/NA placeholders are not searchable."
+                    receiving_matches = [
+                        dict(record_dict(record), invoice_is_vendor_name=_is_vendor_name(record.invoice_number))
+                        for record in find_receiving_serial(serial_number)]
+                    if receiving_matches:
+                        first = receiving_matches[0]
+                        part_name = first['part_name']
+                        entry_date = first['entry_date'] or ""
+                        invoice_number = first['invoice_number']
+                        pod_number = first['pod_number']
+                        message = ("Part Found!" if len(receiving_matches) == 1 else
+                                   f"{len(receiving_matches)} receiving records match this serial number.")
                         found = True
                     else:
-                        message = "No part found with that serial number."
+                        message = message or "No part found with that serial number."
                         found = False
                 except Exception as e:
                     logging.error(f"Error looking up serial number: {e}")
@@ -293,6 +316,7 @@ def index():
                            entry_date=entry_date,
                            invoice_number=invoice_number,
                            pod_number=pod_number,
+                           receiving_matches=receiving_matches,
                            invoice_is_vendor_name=_is_vendor_name(invoice_number),
                            found=found,
                            message=message,
@@ -304,66 +328,22 @@ def index():
                            refresh_status=refresh_status,
                            refresh_message=refresh_message)
 
-@index_bp.route('/word-preview', methods=['GET'])
-def word_preview():
-    file_path = request.args.get('file_path', '').strip()
-    if not file_path:
-        abort(400)
-    if not file_path.lower().endswith('.docx'):
-        abort(400)
-    if not os.path.isfile(file_path):
-        abort(404)
+# Arbitrary-path /word-preview and /word-download routes were removed: they
+# served any .docx path supplied in the URL. Documents are served only from
+# configured folders below, or by database record ID in Work_Order_Routes.
 
-    if Document is None:
-        return render_template(
-            'word_preview.html',
-            file_path=file_path,
-            content="",
-            error="python-docx is not installed. Run: pip install python-docx"
-        )
-
-    try:
-        doc = Document(file_path)
-        paragraphs = [p.text for p in doc.paragraphs if p.text]
-        content = "\n".join(paragraphs)
-        if not content:
-            content = "(No text found in this document.)"
-        return render_template(
-            'word_preview.html',
-            file_path=file_path,
-            content=content,
-            error=""
-        )
-    except Exception as e:
-        logging.error(f"Error reading word file {file_path}: {e}")
-        return render_template(
-            'word_preview.html',
-            file_path=file_path,
-            content="",
-            error="Failed to read the Word file."
-        )
-
-@index_bp.route('/word-download', methods=['GET'])
-def word_download():
-    file_path = request.args.get('file_path', '').strip()
-    if not file_path:
-        abort(400)
-    if not file_path.lower().endswith('.docx'):
-        abort(400)
-    if not os.path.isfile(file_path):
-        abort(404)
-    return send_file(file_path, as_attachment=True)
 
 @index_bp.route('/invoice-download', methods=['GET'])
 def invoice_download():
     invoice_number = request.args.get('invoice_number', '').strip()
-    if not invoice_number or _is_vendor_name(invoice_number):
+    if (not invoice_number or len(invoice_number) > 255 or _is_vendor_name(invoice_number)
+            or re.search(r'[\\/:]|\.\.', invoice_number)):
         abort(400)
-
-    pattern = os.path.join(INVOICE_DIR, f"*{glob.escape(invoice_number)}*")
+    base = require_folder(invoice_dir(), 'invoice')
+    pattern = os.path.join(base, f"*{glob.escape(invoice_number)}*")
     matches = [
         p for p in glob.glob(pattern)
-        if os.path.isfile(p) and not _is_pl_pdf(p)
+        if os.path.isfile(p) and not _is_pl_pdf(p) and inside(base, p)
     ]
     if not matches:
         abort(404)
@@ -375,21 +355,25 @@ def invoice_download():
 
     return send_file(selected, as_attachment=False)
 
+
 @index_bp.route('/outgoing-invoice', methods=['GET'])
 def outgoing_invoice():
     invoice_number = request.args.get('invoice_number', '').strip()
     outgoing_form = request.args.get('outgoing_form', '').strip()
     if not invoice_number and not outgoing_form:
         abort(400)
+    if len(invoice_number) > 255 or len(outgoing_form) > 255:
+        abort(400)
 
+    base = require_folder(outgoing_dir(), 'outgoing')
     search_terms = [term.lower() for term in [outgoing_form, invoice_number] if term]
     matches = []
-    for root, _, files in os.walk(OUTGOING_DIR):
-        for name in files:
+    for root, _, files in os.walk(base):
+        for name in sorted(files):
             name_lower = name.lower()
             if any(term in name_lower for term in search_terms):
                 full_path = os.path.join(root, name)
-                if not _is_pl_pdf(full_path):
+                if not _is_pl_pdf(full_path) and inside(base, full_path):
                     matches.append(full_path)
 
     if not matches:

@@ -10,7 +10,7 @@ from sqlalchemy import text
 from models.models import db
 from functions.wo_lookup import find_work_orders
 from functions.so_status import find_so_status
-from routes.Index_Routes import OUTGOING_DIR, _is_pl_pdf
+from routes.Index_Routes import _is_pl_pdf
 
 
 work_orders_bp = Blueprint("work_orders", __name__, url_prefix="/work-orders")
@@ -33,15 +33,16 @@ def find_outgoing_files(mappings):
         row["files"] = []
     if not mappings:
         return True
-    if not os.path.isdir(OUTGOING_DIR):
+    base = current_app.config["OUTGOING_DIR"]
+    if not base or not os.path.isdir(base):
         return False
-    for root, _, names in os.walk(OUTGOING_DIR):
+    for root, _, names in os.walk(base):
         for name in sorted(names):
             if not name.lower().endswith(".pdf") or _is_pl_pdf(name):
                 continue
             for row in mappings:
                 if any(filename_matches(name, row.get(key)) for key in ("Outgoing Form#", "Invoice#")):
-                    row["files"].append({"name": name, "path": os.path.relpath(os.path.join(root, name), OUTGOING_DIR)})
+                    row["files"].append({"name": name, "path": os.path.relpath(os.path.join(root, name), base)})
     for row in mappings:
         row["files"].sort(key=lambda f: f["path"].lower())
     return True
@@ -131,7 +132,10 @@ def document(kind, record_id):
 @work_orders_bp.get("/outgoing-pdf")
 def outgoing_pdf():
     relative = request.args.get("path", "")
-    base = os.path.realpath(OUTGOING_DIR)
+    configured = current_app.config["OUTGOING_DIR"]
+    if not configured or not os.path.isdir(configured):
+        abort(404)
+    base = os.path.realpath(configured)
     path = os.path.realpath(os.path.join(base, relative))
     try:
         allowed = os.path.commonpath([base, path]) == base

@@ -14,6 +14,8 @@ sys.path.insert(0, str(ROOT / 'tests'))
 from app import create_app
 from openpyxl import load_workbook
 from functions.receiving_workspace import save_database, save_row, fill_serials, load_database
+from functions.incoming_form import invoice_records
+from docx import Document
 from test_receiving_workspace import FakeEngine, metadata, workbook
 
 
@@ -34,6 +36,12 @@ if __name__ == '__main__':
     app = create_app({'TESTING': True, 'SECRET_KEY': 'browser-fixture-only',
                       'SQLALCHEMY_DATABASE_URI': 'sqlite://', 'RECEIVING_REFERENCE_PATH': ''})
     app.instance_path = args.instance
+    Path(args.instance).mkdir(parents=True, exist_ok=True)
+    template_path = Path(args.instance) / 'Incoming Form Template.docx'
+    template = Document()
+    template.add_paragraph('Fixture incoming template')
+    template.save(template_path)
+    app.config['RECEIVING_INCOMING_TEMPLATE_PATH'] = str(template_path)
     engine = FakeEngine()
     table = metadata()
 
@@ -51,6 +59,8 @@ if __name__ == '__main__':
     with patch('functions.receiving_shipment.generate', side_effect=fixture_workbook), \
          patch('functions.receiving_workspace.lock_receiving'), \
          patch('functions.receiving_workspace.receiving_table', return_value=table), \
+         patch('functions.incoming_form.receiving_table', return_value=table), \
+         patch('functions.incoming_form.invoice_records', side_effect=lambda ignored, invoice: invoice_records(engine, invoice)), \
          patch('routes.Receiving_Routes.save_database', side_effect=fixture_save), \
          patch('routes.Receiving_Routes.save_row', side_effect=lambda ignored, *args: save_row(engine, *args)), \
          patch('routes.Receiving_Routes.fill_serials', side_effect=lambda ignored, *args: fill_serials(engine, *args)), \

@@ -1,5 +1,6 @@
 """Review a generated draft, commit explicitly, then reopen invoices for SN entry."""
 import secrets
+from datetime import date
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -8,6 +9,7 @@ from flask import (Blueprint, abort, current_app, jsonify, redirect, render_temp
                    request, send_file, session, url_for)
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import BadRequest, InternalServerError, RequestEntityTooLarge
+from werkzeug.utils import secure_filename
 
 from models.models import db
 from functions.receiving_workspace import (
@@ -89,6 +91,34 @@ def oversized_upload(error):
 @receiving_bp.route('/receiving', methods=['GET'])
 def index():
     return render_receiving()
+
+
+@receiving_bp.route('/receiving/incoming-form', methods=['POST'])
+def generate_incoming_form():
+    """Download a template-based invoice report, without editing any receiving rows."""
+    from functions.incoming_form import invoice_records, template_content, incoming_document
+    require_csrf()
+    try:
+        invoice = request.form.get('invoice_number', '').strip()
+        if request.form.get('inspection_passed', '') not in ('', 'yes'):
+            raise ValueError('Invalid inspection confirmation.')
+        records = invoice_records(db.engine, invoice)
+        template = template_content(request.files.get('template'),
+                                    current_app.config.get('RECEIVING_INCOMING_TEMPLATE_PATH', ''))
+        output, count = incoming_document(records, invoice, template,
+                                         inspection_passed=request.form.get('inspection_passed') == 'yes')
+        today = date.today()
+        filename = f'I{today:%m}-{today:%m%d%y}-TaiwanHQ-{secure_filename(invoice) or "invoice"}.docx'
+        response = send_file(output, as_attachment=True, download_name=filename,
+                             mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        response.headers['X-Incoming-Lines'] = str(count)
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    except (SQLAlchemyError, OSError):
+        current_app.logger.exception('Incoming form generation failed')
+        return jsonify(error='Cannot generate the incoming form. Check database access and the Word template, then retry. No receiving records were changed.'), 503
 
 
 def save_upload(directory, name, extensions, required=True):
@@ -232,7 +262,7 @@ def save_receiving_row():
 
 @receiving_bp.route('/receiving/serials', methods=['POST'])
 def fill_receiving_serials():
-    """Scan one serial or fill an explicit batch into blank, group-scoped slots."""
+    """Fill explicit blank unit slots in one invoice, optionally group-scoped."""
     try:
         data = workspace_payload()
         if set(data) != {'workspace_id', 'group', 'rows'}:

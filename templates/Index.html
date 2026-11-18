@@ -21,7 +21,17 @@
             <div class="card-header"><h2 class="h5 mb-0">Part Name Lookup</h2></div>
             <div class="card-body">
                 {% if serial_number %}
-                    {% if found %}
+                    {% if found and receiving_matches|length > 1 %}
+                    <div class="alert alert-warning">{{ message }} Review each record below.</div>
+                    <div class="table-responsive"><table class="table table-sm table-bordered">
+                        <thead><tr><th>Serial</th><th>Part</th><th>Entry Date</th><th>Invoice Number</th><th>Box</th><th>POD Number</th></tr></thead>
+                        <tbody>{% for m in receiving_matches %}<tr>
+                            <td>{{ m.serial_number }}</td><td>{{ m.part_name }}</td><td>{{ m.entry_date or '' }}</td>
+                            <td>{% if m.invoice_number and not m.invoice_is_vendor_name %}<a class="document-link" href="{{ url_for('index.invoice_download', invoice_number=m.invoice_number) }}">{{ m.invoice_number }}</a>{% else %}{{ m.invoice_number }}{% endif %}</td>
+                            <td>{{ m.box_number }}</td><td>{{ m.pod_number }}</td>
+                        </tr>{% endfor %}</tbody>
+                    </table></div>
+                    {% elif found %}
                     <div>
                         Serial: <strong>{{ serial_number }}</strong><br>
                         Part: <strong>{{ part_name }}</strong><br>

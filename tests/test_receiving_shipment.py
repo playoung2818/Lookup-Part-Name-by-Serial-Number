@@ -383,8 +383,25 @@ class ShipmentRouteTests(ShipmentTests):
         self.assertEqual([row['serial_number'] for row in self.engine.rows], ['ABC000127', 'ABC000128', ''])
         self.assertEqual(self.engine.rows[2]['quantity'], 3)
         page = self.client.get('/receiving')
-        self.assertIn(b'Enter missing serials', page.data)
+        self.assertIn(b'2. Fill consecutive serials', page.data)
+        self.assertIn(b'3. Reload entry by INV#', page.data)
+        self.assertLess(page.data.index(b'id="serial-tools"'), page.data.index(b'id="invoice-search-form"'))
+        self.assertLess(page.data.index(b'id="serial-tools"'), page.data.index(b'id="receiving-workspace"'))
+        self.assertIn(b'id="sequence-form"', page.data)
+        self.assertNotIn(b'id="serial-group"', page.data)
+        self.assertNotIn(b'id="serial-scan-form"', page.data)
+        self.assertNotIn(b'<details class="serial-sequence', page.data)
         self.assertIn(b'readonly aria-label="SN for row', page.data)
+
+    def test_serial_generator_available_without_invoice(self):
+        page = self.client.get('/receiving')
+        self.assertIn(b'2. Fill consecutive serials', page.data)
+        self.assertIn(b'3. Reload entry by INV#', page.data)
+        self.assertIn(b'id="sequence-form"', page.data)
+        self.assertIn(b'id="sequence-output"', page.data)
+        self.assertNotIn(b'id="receiving-workspace"', page.data)
+        self.assertLess(page.data.index(b'id="serial-tools"'), page.data.index(b'id="invoice-search-form"'))
+        self.assertEqual(self.engine.writes, 0)
 
     def test_upload_validation_and_no_table_creation(self):
         response = self.client.post('/receiving/generate', data={'csrf_token': self.csrf})

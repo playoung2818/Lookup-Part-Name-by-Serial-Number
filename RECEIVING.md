@@ -13,49 +13,63 @@ Open **http://192.168.60.215:5000/receiving**.
 
 There is no POD-Reference upload parameter. If `RECEIVING_REFERENCE_PATH` points to an available workbook, the server can still use it automatically. Otherwise References may be blank and can be reviewed in the draft.
 
-The draft grid supports cell-range selection by dragging, Shift-clicking or Shift+Arrow keys. Paste with Ctrl+V / Cmd+V. A rectangular Excel block expands from one starting cell, or must match the selected range. One copied value fills a selection. INV# remains locked. Pastes that touch INV# are rejected before any cells change. Paste dates as YYYY-MM-DD. Invalid or out-of-bounds pastes are rejected as a whole. Saved invoice entry uses scanning and sequence fill, not spreadsheet-range editing.
+The draft grid supports cell-range selection by dragging, Shift-clicking or Shift+Arrow keys. Paste with Ctrl+V / Cmd+V. A rectangular Excel block expands from one starting cell, or must match the selected range. One copied value fills a selection. INV# remains locked. Pastes that touch INV# are rejected before any cells change. Paste dates as YYYY-MM-DD. Invalid or out-of-bounds pastes are rejected as a whole. Saved invoice entry supports scanning and SN-only range selection/paste; non-SN columns remain locked.
 
 Draft cells are not autosaved. Save before leaving. Switching transactions warns about leaving a draft. Draft files are server-side business data, not database records.
 
-## 2. Reload entry by INV#
+## 2. Fill consecutive serials — standalone tool
+
+This always-expanded tool is available before loading an invoice, during draft review, or while viewing saved records. It does not select table rows, call the database, or save serials into records.
+
+1. Enter the first serial and quantity (1–20,000).
+2. Select **Generate serials**.
+3. Review the first/last serial and generated column.
+4. Select **Copy serial list**. If browser clipboard access is unavailable over HTTP, the list is selected for manual Ctrl+C / Cmd+C.
+
+For example, `SC69031431` and quantity `20` produce `SC69031431` through `SC69031450`. Only trailing digits increase. Leading zeros remain intact. Non-numeric suffixes and changes in numeric width are rejected. Generated results do not depend on available database rows and are not checked for duplicates against the database. Editing either input clears stale results. Copying the list does not save it anywhere. To enter it into a saved invoice, select the destination SN cells in the receiving table and paste.
+
+## 3. Reload entry by INV#
 
 Search the **exact QuickBooks INV#**, preserving leading zeros. This loads that invoice's current database rows and establishes a browser workspace scoped to the selected invoice. No file uploads are needed.
 
-The receiving records are read-only until you choose **Correct** on a row. Only serial numbers can change after database commit.
+Only serial numbers can change after database commit. Only populated serials require **Correct**; blank SN cells unlock when focused regardless of quantity.
 
-### Scan missing serials
+### Scan missing serials directly in the table
 
-1. Choose a carton / POD / product group under **Enter missing serials**.
+1. Click any blank SN cell, including bulk rows.
 2. Scan or type one serial number.
-3. Press Enter or select **Save serial**.
-4. Wait for the saved confirmation before scanning the next item.
+3. Press Enter (or use the scanner's Enter suffix).
+4. Wait for saving to finish and focus to move before scanning the next item.
 
-Each scan fills the next blank Qty 1 row in database-ID order within the selected group. Existing serials remain unchanged. A full group stops scanning. The app does not select another group automatically. Table filters do not change the selected scan group.
-
-### Fill consecutive serials
-
-1. Choose the destination group.
-2. Open **Fill consecutive serials**.
-3. Enter the first serial and quantity.
-4. Select **Preview sequence**.
-5. Review the first serial, last serial, count and destination.
-6. Select **Save sequence to database**.
-
-For example, `ABC000127` and quantity `4` produce `ABC000127` through `ABC000130`. Only the trailing digits increase. Leading zeros remain intact. Non-numeric suffixes and changes in numeric width are rejected. Counts must be from 1 to 20,000 and cannot exceed the group's blank unit slots.
-
-The server checks all target rows and serials before any update. A sequence saves in one transaction or saves nothing. Duplicate serials are rejected across the database, not just the selected invoice. No scan or sequence changes a quantity or fills a bulk Qty > 1 row. Existing `NA` values are not blank slots. Use a row correction for exceptional bulk serial entry.
+Enter moves to the next visible blank SN row in the same carton/POD/product group. Existing serials are skipped; quantity does not restrict SN entry and is never changed. A saving error keeps focus on the current cell. At the end of the group, click another blank cell to continue. There is no separate group dropdown or single-scan form.
 
 ### Correct and recover
 
-Select **Correct** to unlock one serial cell. Save with Enter, **Save**, or by leaving the cell. Ctrl+S / Cmd+S retries pending corrections. Each successful correction locks the cell again. Multi-row spreadsheet paste is not available in saved entry.
+Select **Correct** to unlock one serial cell. Save with Enter, **Save**, or by leaving the cell. Ctrl+S / Cmd+S retries pending corrections. Each successful correction locks the cell again.
 
-If a scan or sequence save is not confirmed, select **Retry same save**. The retry uses the original row IDs, versions and serials. It never allocates another set of blank rows. Alternatively, select **Reload database values** to inspect the current records before starting again. Group changes, corrections, downloads and invoice changes are blocked while the scan or sequence remains unconfirmed. Leaving the page warns about unconfirmed writes.
+### Select and paste serial numbers
 
-Every successful scan, sequence or correction updates existing `receiving_log` rows immediately. Unfinished shipments remain available to serial-number lookup. No final import is required.
+Drag over SN cells, Shift-click the last cell, or use Shift+Arrow keys to select a range. Paste a one-column serial list with Ctrl+V / Cmd+V. A list must match the selected range; alternatively click one starting SN cell and paste down visible rows. One copied value fills a selection (useful for repeated `NA`; repeated real serials are rejected). Table filters determine which rows are included; changing a filter clears the selection.
+
+Blank SN cells accept paste directly regardless of quantity. Only populated serials require **Correct** on each intended row before pasting. A bulk row still stores one SN value; typing, scanning or pasting does not split the row or change its quantity. A locked destination, invalid value, local duplicate, mismatched selection or out-of-bounds paste rejects the entire paste before any edits. After validation, each row saves individually using the existing stale-version, database-duplicate and retry checks. This is not an atomic database batch: some rows may save while others show errors. Check row statuses and retry failed rows with Save or Ctrl+S. No non-SN fields or quantities change.
+
+If a row save is not confirmed, use that row's **Save** button to retry its entered serial. An already stored value is read-only on retry. Leaving the page warns about unconfirmed row writes. The standalone generator remains usable even if a row has an error.
+
+Every successful table scan or correction updates existing `receiving_log` rows immediately. Unfinished shipments remain available to serial-number lookup. No final import is required.
 
 Filter records by box, POD, part, serial or Reference. Blank-serial and unsaved/error filters are also available. Refresh and downloads read the database. A database failure never substitutes stale file values. Word inspection remains Pending, never automatic PASS.
 
 Other fields cannot be edited through the row endpoint. No database deletion endpoint is provided. Failed corrections must be resolved before another invoice or template opens.
+
+## 4. Generate incoming form
+
+Enter an exact saved invoice number (leading zeros preserved), optionally upload the existing Word template, then select **Generate incoming form (.docx)**. There is no need to load that invoice into the entry table, and the active invoice/draft is not replaced.
+
+The function reads `receiving_log` in ID order, groups by box/product/POD, sums quantities and joins distinct serials in first-seen order. Blank/missing serials display as `NA`. Carton labels matching `group--start-end` sort numerically, followed by unmatched labels in stable first-seen order. It appends the seven requested columns to the original template: Product Number, Q'TY, S/N, From (Vendor or Customer), Invoice # or RMA #, IQC Result, IQC Remark. Vendor is Neousys Technology. Existing template content is preserved; fractional quantities are not silently truncated.
+
+Check **I confirm inspection has passed** to write `PASS` and `[Receiving & Inspection Result: Pass]`. Otherwise inspection stays Pending. Generating a document does not perform an inspection. The existing **Incoming Word draft** table download remains a separate Pending-only export.
+
+The default template is `OneDrive - neousys-tech\Share NTA Warehouse\01 Incoming\Incoming Form Template.docx`, resolved relative to the current user's home folder (`Path.home()`), not the app's working directory. No drive letter is hard-coded. Override it with `RECEIVING_INCOMING_TEMPLATE_PATH`, or upload a `.docx` (10 MB maximum). The browser downloads `I{MM}-{MMDDYY}-TaiwanHQ-<invoice>.docx`, using the server's local date when generated (including an automatically updated month prefix); neither the template nor shared-folder documents are overwritten. No database tables are created and no receiving records are updated. The existing `DATABASE_DSN` is used; no notebook credentials or new Flask app/model are embedded. No pandas or IPython runtime dependency is required.
 
 ## Database safety
 
@@ -67,7 +81,7 @@ No new tables, indexes or constraints are created. The existing `receiving_log` 
 - `POST /receiving/row` accepts only workspace ID, row ID, SN and expected database-row version. The server resolves the row in the active workspace, verifies its current database invoice matches the fixed invoice scope, and updates only SN with an ID-and-invoice predicate.
 - Stale versions reject external changes rather than overwrite them. If a row moves to another invoice externally, it cannot be edited through the old selection. Deleted rows are not recreated.
 - Duplicate nonblank/non-NA serials are checked across the database. Lost-response retries for an already stored SN are read-only.
-- `POST /receiving/serials` accepts a workspace ID, one carton/POD/product group, and explicit row ID/version/serial assignments. It uses the existing receiving lock. Every row must belong to the fixed invoice and group, retain Qty 1, and remain blank with the expected version. An exact retry of an already stored value is read-only. All assignments commit together. It never inserts rows or overwrites a different serial.
+- The legacy batch endpoint (not used by the standalone Section 2 tool), `POST /receiving/serials`, accepts a workspace ID, a nullable group, and explicit row ID/version/serial assignments. A null group enables invoice-wide fill; a group object retains compatibility with older clients. It uses the existing receiving lock. Every row must belong to the fixed invoice (and group, if supplied), retain its selected carton/POD/product and Qty 1, and remain blank with the expected version. An exact retry of an already stored value is read-only. All assignments commit together. It never inserts rows or overwrites a different serial.
 - The original occurrence-aware receipt matching and recovery machinery remains available for legacy workspaces. New template commits reject existing invoices rather than reconcile/overwrite them.
 
 **Access control:** The module uses signed browser sessions and CSRF protection, but does not add user login or per-user invoice permissions. Anyone with deployment access can search an invoice. Transaction scoping protects the selected editing workflow; restrict deployment access if only designated staff should open particular invoices.
@@ -104,11 +118,14 @@ node --check static/receiving.js
 node --check static/receiving_template.js
 node --check static/receiving_grid.js
 node --check static/receiving_serials.js
+node --check static/receiving_incoming.js
 node tests/receiving_entry.test.cjs
 node tests/receiving_grid.test.cjs
 node tests/receiving_serials.test.cjs
+node --test tests/receiving_sequence_ui.test.cjs
+python -m unittest discover -s tests -p 'test_incoming_form.py'
 ```
 
-Receiving tests use generated workbooks, SQL metadata and a transactional fake database, never production records or DDL. They cover deferred generation, draft validation, explicit commit, closed-template protection, existing-invoice rejection, invoice search, serial-only payloads, cross-workspace rejection, stale edits, duplicates and save recovery. Serial-fill tests also cover group boundaries, bulk protection, atomic rollback, preserved leading zeros and large numeric suffixes.
+Receiving tests use generated workbooks, SQL metadata and a transactional fake database, never production records or DDL. They cover deferred generation, draft validation, explicit commit, closed-template protection, existing-invoice rejection, invoice search, serial-only payloads, cross-workspace rejection, stale edits, duplicates and save recovery. Serial-fill tests also cover invoice-wide fill across groups, legacy group boundaries, bulk protection, atomic rollback, preserved leading zeros and large numeric suffixes.
 
-Run the isolated browser fixture with `python tests/serve_receiving_browser_fixture.py --instance PATH_TO_EMPTY_TEMP_DIRECTORY --port 5019`. Open `http://127.0.0.1:5019/browser-check`. The fixture uses a transactional fake database. It covers draft review/commit, read-only records, scanning, sequence preview/fill, group boundaries, lost-response retry, corrections and database-backed reload.
+Run the isolated browser fixture with `python tests/serve_receiving_browser_fixture.py --instance PATH_TO_EMPTY_TEMP_DIRECTORY --port 5019`. Open `http://192.168.60.215:5019/browser-check`. The fixture uses a transactional fake database. It covers the standalone Section 2 generator before invoice load and during draft review, section order, generation without network/database writes, draft review/commit, direct scanning with Enter advancement, range paste with locked-cell and duplicate rejection, corrections, blank bulk SN entry with quantity preservation and database-backed reload.

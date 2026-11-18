@@ -7,7 +7,8 @@ db = SQLAlchemy()
 class ReceivingLog(db.Model):
     __tablename__ = 'receiving_log'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    serial_number = db.Column(db.String(255), primary_key=True)
+    # The database identity is id. Serial numbers can be blank, NA or repeated.
+    serial_number = db.Column(db.String(255))
     entry_date    = db.Column(db.Date)
     invoice_number= db.Column(db.String(255))
     box_number    = db.Column(db.String(255))

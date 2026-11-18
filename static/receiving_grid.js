@@ -48,7 +48,7 @@
         }
         return edits;
     };
-    const attach = ({table, getRows, onMessage, validate}) => {
+    const attach = ({table, getRows, onMessage, validate, canEdit, applyPaste}) => {
         let selection = null, dragging = false;
         const locate = target => {
             const td = target.closest('td');
@@ -112,12 +112,15 @@
                 // Validate every destination BEFORE touching any cell or dispatching autosaves.
                 const prepared = edits.map(edit => {
                     const input = rows[edit.r][edit.c].querySelector('input');
-                    if (!input || input.disabled || input.readOnly) throw Error('Paste includes a locked column. INV# and saved non-SN fields cannot be changed.');
+                    if (!input || input.disabled || (canEdit ? !canEdit(input) : input.readOnly)) throw Error(canEdit ? 'Paste includes a locked cell. Use blank SN cells, or choose Correct for saved serials.' : 'Paste includes a locked column. INV# and saved non-SN fields cannot be changed.');
                     const value = validate(input, edit.value);
                     return {input, value};
                 });
-                for (const {input, value} of prepared) input.value = value;
-                for (const {input} of prepared) input.dispatchEvent(new Event('input', {bubbles: true}));
+                if (applyPaste) applyPaste(prepared);
+                else {
+                    for (const {input, value} of prepared) input.value = value;
+                    for (const {input} of prepared) input.dispatchEvent(new Event('input', {bubbles: true}));
+                }
                 selection = {anchor: {r: edits[0].r, c: edits[0].c}, end: {r: edits.at(-1).r, c: edits.at(-1).c}};
                 paint(); onMessage(`${prepared.length} cells pasted. ${table.id === 'template-table' ? 'Review and save draft changes.' : 'Serial numbers are saving individually.'}`);
             } catch (error) { onMessage(error.message, true); }

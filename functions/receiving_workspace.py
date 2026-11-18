@@ -444,9 +444,11 @@ def fill_serials(engine, state, group, changes, persist):
     """
     if state.get('mode', 'entry') != 'entry' or state.get('pending'):
         raise WorkspaceConflict('Save the reviewed template and resolve pending writes before scanning.')
-    if (not isinstance(group, dict) or set(group) != set(SERIAL_GROUP_FIELDS)
+    # None selects explicit slots anywhere in the active invoice. A dict retains
+    # compatibility with older group-scoped clients.
+    if group is not None and (not isinstance(group, dict) or set(group) != set(SERIAL_GROUP_FIELDS)
             or any(not isinstance(value, str) or len(value) > 255 for value in group.values())):
-        raise ValueError('Choose one carton, POD and product group.')
+        raise ValueError('Invalid serial fill destination.')
     if not isinstance(changes, list) or not 1 <= len(changes) <= 20000:
         raise ValueError('Fill between 1 and 20,000 serial slots at a time.')
     by_id = {row['row_id']: row for row in state['rows']}
@@ -468,8 +470,9 @@ def fill_serials(engine, state, group, changes, persist):
             raise ValueError('Enter an actual serial number, not a blank or NA placeholder.')
         if key in seen_serials:
             raise ValueError(f'Duplicate SN {value} in this fill. Nothing saved.')
-        if any(clean(row[field]) != group[field] for field in SERIAL_GROUP_FIELDS) or row['quantity'] != 1:
-            raise WorkspaceConflict('All slots must be Qty 1 rows in the selected group.')
+        if (row['quantity'] != 1 or (group is not None and
+                any(clean(row[field]) != group[field] for field in SERIAL_GROUP_FIELDS))):
+            raise WorkspaceConflict('All slots must be Qty 1 rows in the selected destination.')
         seen_ids.add(row_id)
         seen_serials.add(key)
         selected.append((row, change['row_version'], value))
@@ -493,7 +496,7 @@ def fill_serials(engine, state, group, changes, persist):
                 if current is None:
                     raise WorkspaceConflict('A serial slot was deleted. Refresh before scanning again.')
                 if (clean(current['invoice_number']) != scope or clean(row['invoice_number']) != scope
-                        or any(clean(current[field]) != group[field] for field in SERIAL_GROUP_FIELDS)
+                        or any(clean(current[field]) != clean(row[field]) for field in SERIAL_GROUP_FIELDS)
                         or current['quantity'] != 1):
                     raise WorkspaceConflict('A serial slot moved or changed group/quantity. Refresh before scanning again.')
                 if serial_ids.get(serial_key(value), set()) - {current['id']}:

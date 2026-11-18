@@ -56,6 +56,28 @@ class SerialFillTests(unittest.TestCase):
         self.assertEqual(self.store.active()['rows'][1]['saved_serial'], 'ABC000127')
         self.assertEqual(len(self.engine.rows), 6)
 
+    def test_invoice_fill_crosses_groups_and_retries_exact_slots(self):
+        changes = self.changes(('SEQ001', 'SEQ002', 'SEQ003', 'SEQ004'), (1, 2, 3, 5))
+        before = deepcopy(self.engine.rows)
+        self.assertEqual(fill_serials(self.engine, self.state, None, changes, self.store.persist), 4)
+        self.assertEqual([row['serial_number'] for row in self.engine.rows],
+                         ['IMPORTED', 'SEQ001', 'SEQ002', 'SEQ003', '', 'SEQ004'])
+        self.assertEqual(self.engine.rows[4], before[4], 'bulk row remains unchanged')
+        writes = self.engine.writes
+        fill_serials(self.engine, self.state, None, changes, self.store.persist)
+        self.assertEqual(self.engine.writes, writes)
+
+    def test_invoice_fill_still_rejects_moved_rows_and_changed_destinations(self):
+        changes = self.changes(('SEQ001', 'SEQ002'), (1, 5))
+        original = deepcopy(self.engine.rows)
+        for modifications in ({'invoice_number': 'OTHER'}, {'part_number': 'CHANGED'}, {'quantity': 3}):
+            self.engine.rows = deepcopy(original)
+            self.engine.rows[5].update(modifications)
+            before = deepcopy(self.engine.rows)
+            with self.subTest(modifications=modifications), self.assertRaises(WorkspaceConflict):
+                fill_serials(self.engine, self.state, None, changes, self.store.persist)
+            self.assertEqual(self.engine.rows, before)
+
     def test_duplicate_with_other_invoice_or_within_batch_rejects_every_write(self):
         other = dict(self.engine.rows[0], id=100, invoice_number='OTHER', serial_number='abc000128')
         self.engine.rows.append(other)

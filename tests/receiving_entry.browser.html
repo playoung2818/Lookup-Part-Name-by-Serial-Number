@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><meta charset="utf-8"><title>Isolated receiving database-entry test</title>
+<html lang="en"><meta charset="utf-8"><title>Isolated receiving entry test</title>
 <body><pre id="browser-result">RUNNING</pre><iframe id="app" title="Receiving fixture" style="width:1500px;height:900px;border:0"></iframe>
 <script>
 (async () => {
@@ -10,13 +10,27 @@
         for (let i=0;i<150;i++) { if (await check()) return; await new Promise(resolve => setTimeout(resolve,100)); }
         throw Error(`Timed out: ${label}`);
     };
-    const workspace = async () => (await (await fetch('/receiving/workspace')).json()).workspace;
     const db = async () => (await (await fetch('/fixture-db')).json());
     const doc = () => frame.contentDocument;
-    const editable = () => [...doc().querySelectorAll('.sn-input')];
+    const cells = () => [...doc().querySelectorAll('.sn-input')];
     const enter = (input,text) => { input.value=text; input.dispatchEvent(new Event('input',{bubbles:true})); };
+    const pressEnter = input => input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
     try {
         let navigation=loaded(); frame.src='/receiving'; await navigation;
+        assert(!doc().getElementById('receiving-workspace'),'no invoice loaded');
+        assert(doc().getElementById('incoming-form-heading').textContent==='4. Generate incoming form','incoming form is separate Section 4');
+        assert(doc().getElementById('serial-tools-heading').textContent==='2. Fill consecutive serials','tool is Section 2');
+        assert(doc().getElementById('serial-tools').compareDocumentPosition(doc().getElementById('invoice-search-form'))&Node.DOCUMENT_POSITION_FOLLOWING,'invoice reload follows tool');
+        assert(doc().body.textContent.includes('3. Reload entry by INV#'),'invoice reload is Section 3');
+        const realFetch = frame.contentWindow.fetch;
+        frame.contentWindow.fetch = () => {throw Error('Standalone generator must not make network requests');};
+        enter(doc().getElementById('sequence-first'),'SC69031431');
+        enter(doc().getElementById('sequence-count'),'20');
+        doc().getElementById('sequence-form').requestSubmit();
+        const output = doc().getElementById('sequence-output').value.split('\n');
+        assert(output.length===20&&output[0]==='SC69031431'&&output[19]==='SC69031450','standalone generation without invoice');
+        assert((await db()).writes===0,'generator never writes database');
+        frame.contentWindow.fetch = realFetch;
         const form=doc().getElementById('shipment-upload-form');
         for (const [field,name] of [['receipt','receipt.pdf'],['packing','packing.pdf'],['serials','serials.xlsx']]) {
             const transfer=new DataTransfer(); transfer.items.add(new File(['fixture'],name)); form.elements[field].files=transfer.files;
@@ -24,94 +38,67 @@
         navigation=loaded(); form.requestSubmit(); await navigation;
         assert(doc().querySelectorAll('#template-table tbody tr').length===6,'generated draft table');
         assert((await db()).rows.length===0,'generation does not write database records');
+        assert(doc().getElementById('sequence-form'),'generator available during draft review');
         frame.contentWindow.confirm=()=>true;
         const draftRows=[...doc().querySelectorAll('#template-table tbody tr')];
         const start=draftRows[0].querySelector('[data-field="box_number"]');
         start.focus();
-        let block=new DataTransfer(); block.setData('text/plain','BOX-A\tPOD-A\r\nBOX-B\tPOD-B\r\n');
+        const block=new DataTransfer(); block.setData('text/plain','BOX-A\tPOD-A\r\nBOX-B\tPOD-B\r\n');
         start.dispatchEvent(new ClipboardEvent('paste',{clipboardData:block,bubbles:true,cancelable:true}));
-        assert(draftRows[0].querySelector('[data-field="pod_number"]').value==='POD-A'&&draftRows[1].querySelector('[data-field="box_number"]').value==='BOX-B','rectangular Excel paste into draft');
-        const date=draftRows[0].querySelector('[data-field="entry_date"]');
-        date.focus();
-        block=new DataTransfer(); block.setData('text/plain','2026-11-05\tOTHER-INV');
-        date.dispatchEvent(new ClipboardEvent('paste',{clipboardData:block,bubbles:true,cancelable:true}));
-        assert(date.value==='2026-11-04','locked invoice paste rejected atomically');
-        const draftPart=doc().querySelector('#template-table [data-field="part_number"]');
-        enter(draftPart,'REVIEWED-PART');
+        assert(draftRows[1].querySelector('[data-field="box_number"]').value==='BOX-B','draft rectangular paste');
         navigation=loaded(); doc().getElementById('commit-template').click(); await navigation;
-        assert(editable().length===6,'serial-only entry after explicit commit');
-        assert((await db()).rows.length===6,'explicit save writes all reviewed rows');
-        assert((await db()).rows[0].part_number==='REVIEWED-PART','review changes committed');
-        assert(!doc().getElementById('save-draft')&&!doc().getElementById('save-database'),'no draft or whole-table save controls');
-        const initialIds=(await workspace()).rows.map(row=>row.db_id).join(',');
-        assert(editable().every(input=>input.readOnly),'records start read-only');
-        const chooseGroup = text => {
-            const select=doc().getElementById('serial-group');
-            const option=[...select.options].find(option=>option.textContent.includes(text));
-            assert(option,`group exists: ${text}`); select.value=option.value;
-            select.dispatchEvent(new Event('change',{bubbles:true}));
+        assert(cells().length===6&&(await db()).rows.length===6,'explicit commit creates saved rows');
+        const state=JSON.parse(doc().getElementById('receiving-state').textContent);
+        const beforeReport=(await db()).writes;
+        enter(doc().getElementById('incoming-invoice'),state.rows[0].invoice_number);
+        doc().getElementById('incoming-form').requestSubmit();
+        await wait(()=>doc().getElementById('incoming-status').textContent.includes('downloaded'),'template-based incoming Word download');
+        assert((await db()).writes===beforeReport,'incoming form never writes receiving records');
+        assert(JSON.parse(doc().getElementById('receiving-state').textContent).id===state.id,'incoming form preserves active workspace');
+        assert(!doc().getElementById('receiving-workspace').contains(doc().getElementById('serial-tools')),'standalone tool separate from table');
+        assert(!doc().getElementById('serial-group')&&!doc().getElementById('serial-scan-form'),'old scan/group sections removed');
+        cells()[4].focus(); assert(!cells()[4].readOnly,'blank bulk cell accepts entry without Correct');
+        cells()[2].focus(); assert(!cells()[2].readOnly,'blank unit cell accepts scanner');
+        enter(cells()[2],'BROWSER-SCAN-1'); pressEnter(cells()[2]);
+        await wait(()=>doc().activeElement===cells()[3],'Enter saves and advances to next blank unit');
+        assert((await db()).rows[2].serial_number==='BROWSER-SCAN-1','table scan saved');
+        const pasteRange = (first, last, text) => {
+            first.focus();
+            first.dispatchEvent(new PointerEvent('pointerdown',{button:0,buttons:1,bubbles:true}));
+            last.dispatchEvent(new PointerEvent('pointerdown',{button:0,buttons:1,shiftKey:true,bubbles:true,cancelable:true}));
+            frame.contentWindow.dispatchEvent(new PointerEvent('pointerup'));
+            const clipboard=new DataTransfer(); clipboard.setData('text/plain',text);
+            first.dispatchEvent(new ClipboardEvent('paste',{clipboardData:clipboard,bubbles:true,cancelable:true}));
         };
-        const scan = () => doc().getElementById('serial-scan');
-        assert(!doc().getElementById('serial-group').textContent.includes('Cbl-Bulk'),'bulk rows excluded from automatic assignment');
-        chooseGroup('BOX-B');
-        assert(doc().activeElement===scan(),'scan input focused after choosing group');
-        enter(scan(),'BROWSER-SCAN-1'); doc().getElementById('serial-scan-form').requestSubmit();
-        await wait(()=>doc().getElementById('serial-progress').textContent.includes('Group complete'),'scan response');
-        assert((await db()).rows[1].serial_number==='BROWSER-SCAN-1','scan saves to selected group');
-        assert(scan().disabled,'full group stops scanning rather than crossing groups');
-        chooseGroup('CPU-1 · Box 34--30');
-        enter(scan(),'EXPORT-1'); doc().getElementById('serial-scan-form').requestSubmit();
-        await wait(()=>doc().getElementById('serial-status').textContent.includes('already exists'),'duplicate scan rejected');
-        assert((await db()).rows[2].serial_number==='','duplicate leaves target blank');
-        enter(scan(),'');
-        doc().querySelector('.serial-sequence').open=true;
-        enter(doc().getElementById('sequence-first'),'ABC000127');
-        enter(doc().getElementById('sequence-count'),'3');
-        doc().getElementById('sequence-form').requestSubmit();
-        await wait(()=>doc().getElementById('serial-status').textContent.includes('Only 2 blank'),'sequence cannot cross group boundary');
-        enter(doc().getElementById('sequence-count'),'2');
-        doc().getElementById('sequence-form').requestSubmit();
-        await wait(()=>!doc().getElementById('sequence-preview').hidden,'sequence preview');
-        assert(doc().getElementById('sequence-preview-text').textContent.includes('ABC000127 → ABC000128'),'leading zeros and range preview');
-        assert((await db()).rows[2].serial_number==='','preview never writes');
-        doc().getElementById('sequence-save').click();
-        await wait(()=>doc().getElementById('serial-status').textContent.includes('2 serials saved'),'sequence committed');
-        assert((await db()).rows[2].serial_number==='ABC000127'&&(await db()).rows[3].serial_number==='ABC000128','sequence fills selected blank slots');
-        assert((await db()).rows[5].serial_number==='','sequence never enters other product');
-        chooseGroup('Other-Unit');
-        const realFetch=frame.contentWindow.fetch.bind(frame.contentWindow);
-        let loseResponse=true;
-        frame.contentWindow.fetch=async (...args)=>{
-            const response=await realFetch(...args);
-            if(loseResponse&&args[0]==='/receiving/serials'){loseResponse=false;throw Error('Simulated lost response');}
-            return response;
-        };
-        enter(scan(),'RETRY-001'); doc().getElementById('serial-scan-form').requestSubmit();
-        await wait(()=>!doc().getElementById('serial-retry').hidden,'lost response offers retry');
-        assert(doc().getElementById('serial-group').disabled,'uncertain save locks group selection');
-        const writesBeforeRetry=(await db()).writes;
-        doc().getElementById('serial-retry').click();
-        await wait(()=>doc().getElementById('serial-status').textContent.includes('Serial saved'),'same-slot retry');
-        assert((await db()).writes===writesBeforeRetry,'lost-response retry is read-only');
-        navigation=loaded(); frame.src='/receiving'; await navigation;
-        assert(editable()[1].value==='BROWSER-SCAN-1'&&editable()[2].value==='ABC000127','reload retrieves live DB values');
+        const pasteWrites=(await db()).writes;
+        pasteRange(cells()[2],cells()[3],'PASTE001\nPASTE002');
+        assert(doc().getElementById('entry-message').textContent.includes('locked cell'),'saved serial protected from range paste');
+        assert((await db()).writes===pasteWrites,'locked range rejected without writes');
+        cells()[2].closest('tr').querySelector('.row-save').click();
+        pasteRange(cells()[2],cells()[3],'SAME\nSAME');
+        assert(doc().getElementById('entry-message').textContent.includes('duplicate'),'duplicates reject entire paste');
+        assert((await db()).writes===pasteWrites,'duplicate paste never writes');
+        pasteRange(cells()[2],cells()[3],'PASTE001\nPASTE002');
+        await wait(async()=>{const rows=(await db()).rows;return rows[2].serial_number==='PASTE001'&&rows[3].serial_number==='PASTE002';},'selected range paste saved');
+        assert((await db()).writes===pasteWrites+2,'two pasted cells save only their rows');
+        assert(doc().querySelectorAll('#entry-table .grid-selected').length===2,'pasted range highlighted');
+        pasteRange(cells()[4],cells()[4],'NA');
+        await wait(async()=>(await db()).rows[4].serial_number==='NA','blank bulk cell accepts paste without Correct');
+        assert((await db()).rows[4].quantity===3,'bulk SN paste preserves quantity');
         const before=(await db()).writes;
-        editable()[1].closest('tr').querySelector('.row-save').click();
-        assert(!editable()[1].readOnly,'Correct unlocks one row');
-        enter(editable()[1],'BROWSER-EDITED');
-        editable()[1].dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
-        await wait(()=>editable()[1].readOnly,'correction saved and relocked');
-        assert((await db()).rows[1].serial_number==='BROWSER-EDITED','targeted correction saved');
-        assert((await workspace()).rows.map(row=>row.db_id).join(',')===initialIds,'IDs unchanged');
-        assert((await db()).writes===before+1,'one correction causes only one DB UPDATE');
-        const dbRows=(await db()).rows;
-        assert(dbRows.length===6&&dbRows[4].quantity===3&&dbRows[4].serial_number==='','bulk qty and blank serial unchanged');
-        doc().getElementById('only-blank').click();
-        assert([...doc().querySelectorAll('#entry-table tbody tr:not([hidden])')].every(row=>!row.querySelector('.sn-input').value),'blank filter');
-        const stateBefore=await workspace();
-        const failed=await fetch('/receiving/generate',{method:'POST',body:new URLSearchParams({csrf_token:doc().getElementById('receiving-workspace').dataset.csrf})});
-        assert(failed.status===400&&(await workspace()).id===stateBefore.id,'failed upload preserves table');
-        result.textContent='PASS: draft review and commit, read-only records, group-scoped scan, duplicate protection, bounded sequence preview/fill, lost-response retry without extra writes, targeted correction, DB-backed reload, stable IDs and bulk protection. Isolated fake database only.';
+        enter(doc().getElementById('sequence-first'),'ABC000127');
+        enter(doc().getElementById('sequence-count'),'20');
+        doc().getElementById('sequence-form').requestSubmit();
+        assert(doc().getElementById('sequence-output').value.split('\n').length===20,'generator has no row/group limits');
+        assert((await db()).writes===before,'generator independent of loaded invoice');
+        cells()[2].closest('tr').querySelector('.row-save').click();
+        enter(cells()[2],'BROWSER-EDITED'); pressEnter(cells()[2]);
+        await wait(async()=>(await db()).rows[2].serial_number==='BROWSER-EDITED','targeted correction saved');
+        const saved=(await db()).rows;
+        assert(saved.length===6&&saved[4].quantity===3&&saved[4].serial_number==='NA','bulk quantity unchanged after SN entry');
+        navigation=loaded(); frame.src='/receiving'; await navigation;
+        assert(cells()[2].value==='BROWSER-EDITED','reload reads database');
+        result.textContent='PASS: standalone Section 2 generator before invoice load, section order, no network/database writes, generation during draft review, direct scanning and Enter advancement, selected-range paste, locked-cell/duplicate rejection, corrections, blank bulk SN entry with quantity preservation, and read-only template-based incoming Word download. Isolated fake database only.';
     } catch(error) {result.textContent=`FAIL: ${error.stack}`;}
 })();
 </script></body></html>

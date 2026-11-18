@@ -1,69 +1,79 @@
-# 🔍 Lookup Part Name by Serial Number
+# Neousys Warehouse Operations App
 
-
-
-This is a Flask-based web application that allows users to:
-- Look up part names by serial numbers
-- Prune multiple serial numbers from raw text
-- Sync receiving log data from a Excel Sheet to a PostgreSQL database
-
-To run this app with the Word-file API, run
-`python app.py`. This single process serves both the web app and API on port 5000;
-no separate API process is needed.
-The API is available at `http://127.0.0.1:5000/api/word-files` and
-`http://localhost:5000/api/word-files`.
-The API reads existing records from `word_file_log`; importing Word files is
-handled separately.
-
-## Local configuration (not committed)
-
-1. Install dotenv support: `python -m pip install python-dotenv`.
-2. Copy `.env.example` to `.env` in the project root.
-3. Fill in `DATABASE_DSN`, a securely generated `SECRET_KEY`, and `MRP_BASE_URL`.
-   URL-encode special characters in database usernames/passwords.
-4. Run `python app.py` as usual. `config.py` loads `.env` automatically;
-   existing process environment variables take precedence.
-
-`.env` and Python cache files are ignored by Git. Commit `config.py` and
-`.env.example`, which contain no real credentials. A database connection must
-be supplied; there is no hardcoded credential fallback. If a real password was
-previously committed or pushed, rotate it: ignoring `.env` does not remove old
-credentials from Git history.
-
----
+Flask web app for the NTA warehouse, backed by the existing PostgreSQL database
+(`receiving_log`, `wo_details`, `outgoing_records`, `warehouse_borrow_log`, ...).
 
 ![Animation](https://github.com/user-attachments/assets/639a5ecf-670b-4952-8bad-09c2a29fa427)
 
----
+## Features
 
-## 📦 Features
+- **Serial / SO lookup** (sidebar search): finds receiving records by serial number
+  (case-insensitive, ignores surrounding spaces, lists *all* matches) plus used
+  history from `wo_details`. Order numbers open the work-order viewer.
+- **Receiving** (`/receiving`): generate a receiving template from shipment files,
+  enter serials by scanning or pasting, generate consecutive serial lists, and
+  produce the incoming Word form. See [RECEIVING.md](RECEIVING.md).
+- **Work orders** (`/work-orders/`), **Inventory count** (`/inventory-count`),
+  **Warehouse borrow log** (`/warehouse-borrow-log/`). See [INVENTORY_LOOKUP.md](INVENTORY_LOOKUP.md).
+- **JSON API**: `GET /api/lookup?serial_number=...` and the token-protected
+  `POST /api/sheet-update` (see below).
 
-- **Serial Number Lookup:** Search for parts by entering serial numbers
-- **Batch Pruning:** Clean and extract useful serial numbers from messy input
-- **Excel Sheet Sync:** Automatically loads data from an Excel Sheet
-- **Word File Validation:** Upload `.docx` files to validate SN-part mappings via internal API
+## Setup
 
----
+```powershell
+python -m pip install -r requirements.txt
+copy .env.example .env   # then fill in DATABASE_DSN and SECRET_KEY
+python scripts/run_web.py
+```
 
+The app serves on port 5000: **http://192.168.60.215:5000**.
+`scripts/install_startup_task.ps1` registers it as a Windows startup task.
 
-## 🏗️ Project Structure
+`config.py` loads `.env`; real environment variables take precedence. `.env` is
+ignored by Git; never commit credentials. If a password was ever committed or
+shared, rotate it: ignoring `.env` does not remove it from Git history.
 
-- `receiving_log_app/`
-  - `app/` – Application package  
-    - `__init__.py` – App factory setup  
-    - `config.py` – Configuration (DB, logging, etc.)  
-    - `models/models.py` – SQLAlchemy models  
-    - `routes/index_routes.py` – Main UI routes  
-    - `routes/api_routes.py` – API endpoints   
-    - `services/utils.py` – Helper functions (e.g., SN extractor)  
-    - `services/validation.py` – Serial number and part matching logic
-    - `templates/index.html` – Frontend template  
-  - `app.py` – Entry point using `create_app()`  
-  - `requirements.txt` – Python dependencies  
-  - `README.md` – Project documentation
+| Setting | Purpose |
+|---|---|
+| `DATABASE_DSN` | PostgreSQL URL (URL-encode special characters in the password). Required. |
+| `SECRET_KEY` | Stable random key so sessions survive restarts. |
+| `MRP_BASE_URL`, `MES_BASE_URL` | Inventory and MES services. |
+| `INVOICE_DIR`, `OUTGOING_DIR` | Shared document folders. Default to `~/OneDrive - neousys-tech/Share NTA Warehouse/...` for the user running the app. |
+| `RECEIVING_REFERENCE_PATH`, `RECEIVING_INCOMING_TEMPLATE_PATH` | Receiving POD reference workbook and incoming Word template (same OneDrive default). |
+| `SHEET_UPDATE_TOKEN` | Enables `POST /api/sheet-update`. Unset = endpoint disabled. |
 
+## Database safety
 
+- The app **never creates or migrates tables on startup**.
+- `python create_db.py` only reports missing model tables. Creating one requires
+  approval and an explicit `python create_db.py --create TABLE --confirm`.
+- `setup_borrow_log.py` creates only the borrow-log table (see below).
+- `scripts/receiving_lookup_indexes.sql` contains *proposed* lookup indexes for
+  `receiving_log`. It is not applied automatically; review and approve before running.
 
+## API
+
+- `GET /api/lookup?serial_number=SN` returns the newest match as
+  `serial_number`, `part_name`, `entry_date`, plus `match_count` and `matches`.
+  Blank/NA placeholders return 400; no match returns 404.
+- `POST /api/sheet-update` requires `Authorization: Bearer <SHEET_UPDATE_TOKEN>`.
+  JSON accepts only `serial_number`, `entry_date` (YYYY-MM-DD), `invoice_number`,
+  `box_number`, `pod_number`, `part_number`, `quantity`. It updates the single row
+  with that serial or creates one; serials matching multiple rows return 409.
+
+Documents are served only from the configured folders (`/invoice-download`,
+`/outgoing-invoice`) or by database record ID; URLs cannot supply file paths.
+
+## Tests
+
+```powershell
+python -m unittest discover -s tests -v
+node --test tests/*.test.cjs
+```
+
+Tests use in-memory SQLite and mocks, never the production database.
+GitHub Actions runs them on every push to `main` and on pull requests
+(`.github/workflows/tests.yml`).
 
 # Warehouse Borrow Log
 
@@ -95,7 +105,7 @@ remain outstanding. Borrow IDs use `BR-yymmdd-NNN`, with a database sequence ins
 of a worksheet row; changing Borrow Date changes the date portion of the ID.
 Warehouse and purpose suggestions permit custom values, as the workbook does.
 
-Create just the new PostgreSQL table (does not alter existing tables):
+Create just the new PostgreSQL table (does not alter existing tables; get approval first):
 
 ```powershell
 python setup_borrow_log.py

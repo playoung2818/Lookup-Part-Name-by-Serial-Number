@@ -20,14 +20,24 @@ def database_uri(value):
     return value
 
 
+SHARE_ROOT = Path.home() / 'OneDrive - neousys-tech' / 'Share NTA Warehouse'
+
+
 class Config:
     SQLALCHEMY_DATABASE_URI = database_uri(os.getenv('DATABASE_DSN'))
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     LOG_LEVEL = logging.INFO
     PERMANENT_SESSION_LIFETIME = timedelta(days=365)
     RECEIVING_REFERENCE_PATH = os.getenv(
-        'RECEIVING_REFERENCE_PATH',
-        str(Path.home() / 'OneDrive - neousys-tech' / 'Share NTA Warehouse' / '01 Incoming' / 'POD-Reference.xlsx'))
+        'RECEIVING_REFERENCE_PATH', str(SHARE_ROOT / '01 Incoming' / 'POD-Reference.xlsx'))
+    # Shared document folders resolve from the current user's home unless overridden.
+    INVOICE_DIR = os.getenv('INVOICE_DIR', str(SHARE_ROOT / '01 Incoming' / 'HQ Shipping Documents'))
+    OUTGOING_DIR = os.getenv('OUTGOING_DIR', str(SHARE_ROOT / '03 Outgoing (WOOF)'))
+    # /api/sheet-update is disabled unless a shared bearer token is configured.
+    SHEET_UPDATE_TOKEN = os.getenv('SHEET_UPDATE_TOKEN', '')
+    RECEIVING_INCOMING_TEMPLATE_PATH = os.getenv(
+        'RECEIVING_INCOMING_TEMPLATE_PATH',
+        str(SHARE_ROOT / '01 Incoming' / 'Incoming Form Template.docx'))
     MRP_BASE_URL = os.getenv('MRP_BASE_URL', 'http://192.168.60.215:5002')
     MES_BASE_URL = os.getenv('MES_BASE_URL', 'http://192.168.60.215:5001')
 
