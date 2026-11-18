@@ -35,6 +35,27 @@ def inventory_data(item, reload=False):
     return data
 
 
+def suggest_items(query, limit=8):
+    """MRP item suggestions; [] when MRP is unavailable (search keeps working)."""
+    query = (query or '').strip()
+    if not query or len(query) > 200:
+        return []
+    try:
+        items = mrp_get('/api/item_suggest', {'q': query}).get('items')
+    except (requests.RequestException, ValueError, KeyError) as exc:
+        current_app.logger.warning('MRP item suggestions unavailable: %s', type(exc).__name__)
+        return []
+    if not isinstance(items, list):
+        return []
+    return [item for item in items if isinstance(item, str) and item.strip()][:limit]
+
+
+def exact_item(query):
+    """Canonical item name when the query is an inventory item number (any case)."""
+    key = (query or '').strip().casefold()
+    return next((item for item in suggest_items(query, limit=50) if item.strip().casefold() == key), None)
+
+
 @inventory_count_bp.get('/inventory_count')
 @inventory_count_bp.get('/inventory-count')
 def index():

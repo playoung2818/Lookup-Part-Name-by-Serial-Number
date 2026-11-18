@@ -12,6 +12,9 @@ from functions.utils import extract_useful_number
 from functions.wo_lookup import find_by_serial
 from functions.Validation import validate_sn_part_matches_via_api
 from functions.serial_lookup import find_receiving_serial, record_dict, serial_key, PLACEHOLDERS
+from routes.Inventory_Count_Routes import suggest_items
+from sqlalchemy.exc import SQLAlchemyError
+from models.models import db
 
 index_bp = Blueprint('index', __name__)
 
@@ -142,23 +145,165 @@ def _order_lookup_variants(order_id):
         variants.append(f"SO-{match.group(1)}")
     return variants
 
+def used_history(serial):
+    """wo_details records whose product serial fields contain this exact serial,
+    with matching outgoing records. Raises on database errors."""
+    search_variants = sorted(_serial_variants(serial), key=len, reverse=True)
+
+    rows = find_by_serial(search_variants)
+
+    def row_has_exact_serial(row, serial):
+        search_variants = _serial_variants(serial)
+        if not search_variants:
+            return False
+
+        product_details = row.get("product_details")
+        if product_details is None:
+            return False
+        if isinstance(product_details, str):
+            try:
+                product_details = json.loads(product_details)
+            except Exception:
+                raw_lower = product_details.lower()
+                return any(variant.lower() in raw_lower for variant in search_variants)
+        if isinstance(product_details, dict):
+            product_details = [product_details]
+        if not isinstance(product_details, list):
+            return False
+
+        for item in product_details:
+            if not isinstance(item, dict):
+                continue
+            sn_field = item.get("sn")
+            if not sn_field:
+                continue
+            if _sn_field_variants(sn_field) & search_variants:
+                return True
+        return False
+
+    word_serial_results = [row for row in rows if row_has_exact_serial(row, serial)]
+
+    def extract_eight_digits(file_name):
+        if not file_name:
+            return ""
+        match = re.search(r"\b(\d{8})\b", str(file_name))
+        return match.group(1) if match else ""
+
+    for row in word_serial_results:
+        file_name = row.get("file_name")
+        order_id = row.get("order_id")
+        eight_digits = extract_eight_digits(file_name)
+
+        where_clauses = []
+        params = {}
+        for idx, order_variant in enumerate(_order_lookup_variants(order_id)):
+            key = f"order_id_{idx}"
+            where_clauses.append(f"\"WO/SO #\" ILIKE :{key}")
+            params[key] = f"%{order_variant}%"
+        if eight_digits:
+            where_clauses.append("\"WO/SO #\" ILIKE :eight_digits")
+            params["eight_digits"] = f"%{eight_digits}%"
+
+        row["outgoing_info"] = []
+        if where_clauses:
+            try:
+                sql = (
+                    "SELECT \"WO/SO #\", \"Customer\", \"Invoice#\", "
+                    "\"Outgoing Form#\", \"Invoice Date\" "
+                    "FROM public.outgoing_records "
+                    f"WHERE {' OR '.join(where_clauses)}"
+                )
+                outgoing_rows = ReceivingLog.query.session.execute(
+                    text(sql), params
+                ).mappings().all()
+                row["outgoing_info"] = _deduplicate_outgoing_rows(outgoing_rows)
+            except Exception as outgoing_error:
+                logging.error(
+                    "Error querying outgoing info for word file %s: %s",
+                    file_name,
+                    outgoing_error
+                )
+    return word_serial_results
+
+ORDER_PATTERN = r'(?:(?:SO\s*-?\s*)|(?:WO\d{2}\s*-\s*))?(\d{8})'
+
+
 @index_bp.get('/lookup')
 def lookup():
+    """One box, one page: serial number, SO number and inventory item results together."""
+    from routes.Inventory_Count_Routes import inventory_data
+    from functions.so_status import find_so_status
+    from functions.wo_lookup import find_work_orders
     query = request.args.get('q', '').strip()
     if not query:
         return redirect(url_for('index.index'))
     if len(query) > 255:
         abort(400)
-    order = re.fullmatch(r'(?:(?:SO\s*-?\s*)|(?:WO\d{2}\s*-\s*))?(\d{8})', query, re.I)
+
+    order = re.fullmatch(ORDER_PATTERN, query, re.I)
+
+    # 1. Serial number: receiving records and used history. SO numbers are not
+    # serials (the legacy serial clean-up would reduce "SO-..." to "O" and over-match).
+    serial = {'records': [], 'history': [], 'error': None, 'placeholder': serial_key(query) in PLACEHOLDERS}
+    if not serial['placeholder'] and not order:
+        try:
+            serial['records'] = [dict(record_dict(r), invoice_is_vendor_name=_is_vendor_name(r.invoice_number))
+                                 for r in find_receiving_serial(query)]
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception('Receiving lookup failed')
+            serial['error'] = 'Receiving records are unavailable.'
+        try:
+            serial['history'] = used_history(query)
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception('Used history lookup failed')
+            serial['error'] = (serial['error'] + ' ' if serial['error'] else '') + 'Used history is unavailable.'
+
+    # 2. SO number: workflow status and work-order records.
+    so = {'number': f'SO-{order.group(1)}' if order else None, 'workflow': None, 'records': [], 'error': None}
     if order:
-        return redirect(url_for('work_orders.index', q=f'SO-{order.group(1)}'))
-    return redirect(url_for('index.index', serial_number=query))
+        try:
+            so['workflow'] = find_so_status(so['number'])
+        except Exception:
+            current_app.logger.exception('SO workflow lookup failed')
+            so['error'] = 'Workflow status is unavailable.'
+        try:
+            so['records'] = find_work_orders('%' + order.group(1) + '%')
+        except Exception:
+            current_app.logger.exception('Work order lookup failed')
+            so['error'] = (so['error'] + ' ' if so['error'] else '') + 'Work-order records are unavailable.'
+
+    # 3. Inventory item: exact item stock, plus other matching items.
+    item = {'name': None, 'data': None, 'matches': [], 'error': None}
+    if not order:
+        item['matches'] = suggest_items(query)
+        key = query.casefold()
+        item['name'] = next((name for name in item['matches'] if name.strip().casefold() == key), None)
+        if item['name']:
+            try:
+                item['data'] = inventory_data(item['name'])
+            except Exception:
+                current_app.logger.warning('MRP inventory unavailable for %s', item['name'])
+                item['error'] = 'Stock quantities are unavailable from MRP.'
+        item['matches'] = [name for name in item['matches'] if name != item['name']]
+
+    found = bool(serial['records'] or serial['history'] or so['workflow'] or so['records']
+                 or item['name'] or item['matches'])
+    return render_template('lookup_results.html', query=query, serial=serial, so=so,
+                           inventory=item, found=found, search_value=query)
+
+
+@index_bp.get('/serial-search')
+def serial_search():
+    """Former sidebar landing page; the homepage search replaces it."""
+    return redirect(url_for('index.index'))
 
 
 @index_bp.route('/', methods=['GET', 'POST'])
 def index():
-    if request.method == 'GET' and 'serial_number' not in request.args:
-        return redirect(url_for('inventory_count.index'))
+    if request.method == 'GET' and not request.args.get('serial_number', '').strip():
+        return render_template('home.html', home_page=True)
     serial_number = ""
     part_name = ""
     entry_date = ""
@@ -219,81 +364,7 @@ def index():
             word_serial_query = lookup_data.get('serial_number', lookup_data.get('word_serial_query', '')).strip()
             if word_serial_query:
                 try:
-                    search_variants = sorted(_serial_variants(word_serial_query), key=len, reverse=True)
-
-                    rows = find_by_serial(search_variants)
-
-                    def row_has_exact_serial(row, serial):
-                        search_variants = _serial_variants(serial)
-                        if not search_variants:
-                            return False
-
-                        product_details = row.get("product_details")
-                        if product_details is None:
-                            return False
-                        if isinstance(product_details, str):
-                            try:
-                                product_details = json.loads(product_details)
-                            except Exception:
-                                raw_lower = product_details.lower()
-                                return any(variant.lower() in raw_lower for variant in search_variants)
-                        if isinstance(product_details, dict):
-                            product_details = [product_details]
-                        if not isinstance(product_details, list):
-                            return False
-
-                        for item in product_details:
-                            if not isinstance(item, dict):
-                                continue
-                            sn_field = item.get("sn")
-                            if not sn_field:
-                                continue
-                            if _sn_field_variants(sn_field) & search_variants:
-                                return True
-                        return False
-
-                    word_serial_results = [row for row in rows if row_has_exact_serial(row, word_serial_query)]
-
-                    def extract_eight_digits(file_name):
-                        if not file_name:
-                            return ""
-                        match = re.search(r"\b(\d{8})\b", str(file_name))
-                        return match.group(1) if match else ""
-
-                    for row in word_serial_results:
-                        file_name = row.get("file_name")
-                        order_id = row.get("order_id")
-                        eight_digits = extract_eight_digits(file_name)
-
-                        where_clauses = []
-                        params = {}
-                        for idx, order_variant in enumerate(_order_lookup_variants(order_id)):
-                            key = f"order_id_{idx}"
-                            where_clauses.append(f"\"WO/SO #\" ILIKE :{key}")
-                            params[key] = f"%{order_variant}%"
-                        if eight_digits:
-                            where_clauses.append("\"WO/SO #\" ILIKE :eight_digits")
-                            params["eight_digits"] = f"%{eight_digits}%"
-
-                        row["outgoing_info"] = []
-                        if where_clauses:
-                            try:
-                                sql = (
-                                    "SELECT \"WO/SO #\", \"Customer\", \"Invoice#\", "
-                                    "\"Outgoing Form#\", \"Invoice Date\" "
-                                    "FROM public.outgoing_records "
-                                    f"WHERE {' OR '.join(where_clauses)}"
-                                )
-                                outgoing_rows = ReceivingLog.query.session.execute(
-                                    text(sql), params
-                                ).mappings().all()
-                                row["outgoing_info"] = _deduplicate_outgoing_rows(outgoing_rows)
-                            except Exception as outgoing_error:
-                                logging.error(
-                                    "Error querying outgoing info for word file %s: %s",
-                                    file_name,
-                                    outgoing_error
-                                )
+                    word_serial_results = used_history(word_serial_query)
                 except Exception as e:
                     logging.error(f"Error querying wo_details: {e}")
                     word_serial_results = []
@@ -310,7 +381,12 @@ def index():
                     logging.error(f"Error processing uploaded file: {e}")
                     match_results = []
 
+    item_suggestions = []
+    if serial_number and not receiving_matches and not word_serial_results:
+        item_suggestions = suggest_items(serial_number)
+
     return render_template('index.html',
+                           item_suggestions=item_suggestions,
                            serial_number=serial_number,
                            part_name=part_name,
                            entry_date=entry_date,

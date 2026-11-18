@@ -1,0 +1,18 @@
+{# One search box for serial numbers, SO numbers and inventory items. #}
+<form class="global-search{{ ' global-search-home' if home_page }}" action="{{ url_for('index.lookup') }}" method="get" role="search" aria-label="Search serial, SO and item numbers">
+    <label class="visually-hidden" for="global-search-input">Serial number, SO number or item number</label>
+    <div class="global-search-box">
+        <svg class="global-search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="global-search-input" name="q" type="search" maxlength="255" required autocomplete="off" autocapitalize="off" spellcheck="false"
+               value="{{ search_value|default('') }}" placeholder="Scan or type a serial, SO or item number"
+               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="global-search-suggestions"
+               aria-describedby="global-search-status" data-suggest-url="{{ url_for('inventory_count.item_suggest') }}"{% if search_autofocus %} data-autofocus{% endif %}>
+        <kbd class="global-search-key" title="Press / to search">/</kbd>
+        <button class="btn btn-primary" type="submit">Search</button>
+    </div>
+    <div id="global-search-suggestions" class="global-search-suggestions" role="listbox" aria-label="Inventory items" hidden></div>
+    <div class="global-search-meta">
+        <span id="global-search-status" aria-live="polite">Serial numbers, SO numbers and inventory item numbers — press Enter to go</span>
+        <span class="global-search-recent" hidden><span class="recent-label">Recent:</span> <span class="recent-items"></span> <button type="button" class="recent-clear">Clear</button></span>
+    </div>
+</form>

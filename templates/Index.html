@@ -3,22 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SN# and WO Search</title>
+    <title>{{ (serial_number or word_serial_query) ~ " · " if (serial_number or word_serial_query) }}Search · Warehouse operations</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='Icon.ico') }}">
     <link href="{{ url_for('static', filename='search_results.css') }}" rel="stylesheet">
-    <link href="{{ url_for('static', filename='erp.css') }}?v=1" rel="stylesheet">
+    <link href="{{ url_for('static', filename='erp.css') }}?v=7" rel="stylesheet">
 </head>
 <body class="bg-light">
     <main class="container py-4">
         {% include 'brand_header.html' %}
 
-        {% include 'search_bars.html' %}
+        
 
-        {% if serial_number or word_serial_query %}
-        <!-- Combined serial results -->
+        {% set shown_query = serial_number or word_serial_query %}
+        {% if shown_query %}
+        <h1 class="results-title" id="workspace-content" tabindex="-1">Results for <span class="results-query">{{ shown_query }}</span></h1>
+        {% if not found and not word_serial_results %}
+        <section class="no-results" aria-label="No results">
+            <p class="no-results-title">No results for <strong>{{ shown_query }}</strong></p>
+            {% if message and 'placeholder' in message %}<p>{{ message }}</p>
+            {% else %}<p>It was not found as a received serial number, a used-history serial, an SO number or an inventory item.</p>{% endif %}
+            {% if item_suggestions %}
+            <p class="mb-1">Did you mean one of these inventory items?</p>
+            <ul class="did-you-mean">{% for suggestion in item_suggestions %}<li><a href="{{ url_for('inventory_count.index', item=suggestion) }}">{{ suggestion }}</a></li>{% endfor %}</ul>
+            {% endif %}
+            <p class="no-results-tips">Check the spelling, or scan the label again. SO numbers have 8 digits, e.g. SO-20260295.</p>
+        </section>
+        {% else %}
+        <!-- Receiving record -->
         <div class="card mb-3 result-card wo-results">
-            <div class="card-header"><h2 class="h5 mb-0">Part Name Lookup</h2></div>
+            <div class="card-header"><h2 class="h5 mb-0">Receiving record</h2>{% if receiving_matches|length > 1 %}<span class="result-count">{{ receiving_matches|length }} records</span>{% endif %}</div>
             <div class="card-body">
                 {% if serial_number %}
                     {% if found and receiving_matches|length > 1 %}
@@ -47,7 +61,7 @@
                         POD Number: <strong>{{ pod_number }}</strong>
                     </div>
                     {% else %}
-                    <div class="alert alert-warning mt-3">{{ message }}</div>
+                    <p class="text-muted mb-0">Not found in the receiving log. Used history is shown below.</p>
                     {% endif %}
                 {% endif %}
             </div>
@@ -55,7 +69,7 @@
 
         <!-- Used History Lookup -->
         <div class="card mb-3 result-card word-results">
-            <div class="card-header"><h2 class="h5 mb-0">Used History Lookup</h2><span class="result-count">{{ word_serial_results|length }} records</span></div>
+            <div class="card-header"><h2 class="h5 mb-0">Used history</h2><span class="result-count">{{ word_serial_results|length }} records</span></div>
             <div class="card-body">
                 {% if word_serial_results %}
                 <ul class="history-list">
@@ -98,6 +112,7 @@
             </div>
         </div>
 
+        {% endif %}
         {% endif %}
         <!-- Upload and Validate Word File
         <div class="card">

@@ -36,16 +36,16 @@ class InventoryLookupTests(unittest.TestCase):
         self.assertEqual(get.call_args.kwargs['params'], {'item':'RAM'})
         self.assertEqual(self.client.post('/inventory_count', data={}).status_code, 405)
 
-    def test_home_opens_all_inventory(self):
-        response = self.client.get('/')
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.location, '/inventory-count')
-        with patch('routes.Inventory_Count_Routes.requests.get', return_value=self.response()) as get:
-            response = self.client.get('/', follow_redirects=True)
+    def test_home_is_search_only_with_link_to_all_inventory(self):
+        with patch('routes.Inventory_Count_Routes.requests.get') as get:
+            response = self.client.get('/')
+        get.assert_not_called()  # the homepage is just the search box
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Inventory status', response.data)
-        self.assertIn(b'item=RAM', response.data)
-        self.assertEqual(get.call_args.kwargs['params'], {'item': ''})
+        self.assertIn(b'global-search-home', response.data)
+        self.assertEqual(response.data.count(b'id="global-search-input"'), 1)
+        self.assertIn(b'data-autofocus', response.data)
+        self.assertIn(b'href="/inventory-count">Browse all inventory', response.data)
+        self.assertNotIn(b'Inventory status', response.data)
 
     def test_initial_page_lists_items(self):
         with patch('routes.Inventory_Count_Routes.requests.get', return_value=self.response()):
@@ -119,16 +119,30 @@ class InventoryLookupTests(unittest.TestCase):
         with patch('routes.Inventory_Count_Routes.requests.get', return_value=self.response(data)):
             self.assertEqual(self.client.get('/inventory_count?item=RAM').status_code, 503)
 
-    def test_inventory_search_and_reload_stay_outside_sidebar(self):
+    def test_items_use_the_global_search_and_reload_stays_on_page(self):
         with patch('routes.Inventory_Count_Routes.requests.get', return_value=self.response()):
-            response = self.client.get('/inventory_count')
+            response = self.client.get('/inventory_count?item=RAM')
         sidebar = response.data.split(b'<aside class="app-sidebar"', 1)[1].split(b'</aside>', 1)[0]
         self.assertNotIn(b'Reload MRP data', sidebar)
-        self.assertNotIn(b'name="item"', sidebar)
         self.assertIn(b'Reload MRP data', response.data)
-        self.assertIn(b'name="item"', response.data)
-        self.assertNotIn(b'Inventory count</span>', response.data)
+        self.assertNotIn(b'name="item"', response.data)  # no separate item search box
+        self.assertEqual(response.data.count(b'role="search"'), 1)
+        self.assertIn(b'id="global-search-input" name="q"', response.data)
+        self.assertIn(b'value="RAM"', response.data)  # current item prefilled
+        self.assertIn(b'Inventory for <span class="results-query">RAM</span>', response.data)
 
+    def test_suggest_items_and_exact_item(self):
+        from routes.Inventory_Count_Routes import suggest_items, exact_item
+        response = self.response({'ok': True, 'items': ['7443P', '7443P-1', 5, '']})
+        with self.app.app_context(), patch('routes.Inventory_Count_Routes.requests.get', return_value=response) as get:
+            self.assertEqual(suggest_items('7443'), ['7443P', '7443P-1'])
+            self.assertEqual(exact_item(' 7443p '), '7443P')
+            self.assertIsNone(exact_item('7443'))
+            self.assertEqual(get.call_args.args[0], 'http://mrp.test:5002/api/item_suggest')
+        with self.app.app_context(), patch('routes.Inventory_Count_Routes.requests.get',
+                                           side_effect=requests.ConnectionError('down')):
+            self.assertEqual(suggest_items('7443'), [])
+            self.assertIsNone(exact_item('7443P'))
 
 if __name__ == '__main__':
     unittest.main()

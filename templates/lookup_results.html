@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ query }} · Search · Warehouse operations</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='Icon.ico') }}">
+    <link href="{{ url_for('static', filename='erp.css') }}?v=7" rel="stylesheet">
+</head>
+<body class="bg-light">
+<main class="container-fluid py-4">
+    {% include 'brand_header.html' %}
+    <h1 class="results-title" id="workspace-content" tabindex="-1">Results for <span class="results-query">{{ query }}</span></h1>
+    {% if not found and not serial.error and not so.error and not inventory.error %}
+    <p class="results-meta">Nothing found in any section. Check the spelling, or scan the label again.</p>
+    {% endif %}
+
+    {# ---------- 1. Serial number ---------- #}
+    {% set serial_count = serial.records|length + serial.history|length %}
+    <section class="lookup-section{{ ' is-empty' if not serial_count }}" aria-labelledby="serial-heading">
+        <header class="lookup-section-header">
+            <h2 id="serial-heading">Serial number</h2>
+            <span class="result-count">{{ serial_count }} {{ 'result' if serial_count == 1 else 'results' }}</span>
+            {% if serial_count %}<a class="lookup-more" href="{{ url_for('index.index', serial_number=query) }}">Full serial details →</a>{% endif %}
+        </header>
+        {% if serial.error %}<p class="lookup-error">{{ serial.error }}</p>{% endif %}
+        {% if so.number %}
+        <p class="lookup-empty">SO numbers are not serial numbers.</p>
+        {% elif serial.placeholder %}
+        <p class="lookup-empty">Blank / NA placeholders are not searchable as serial numbers.</p>
+        {% elif not serial_count %}
+        <p class="lookup-empty">No received serial number or used history matches “{{ query }}”.</p>
+        {% endif %}
+        {% if serial.records %}
+        <h3 class="lookup-subheading">Receiving record{{ 's' if serial.records|length > 1 }}</h3>
+        <div class="table-responsive"><table class="table table-sm lookup-table">
+            <thead><tr><th>Serial</th><th>Part</th><th>Entry date</th><th>Invoice</th><th>Box</th><th>POD</th></tr></thead>
+            <tbody>{% for m in serial.records %}<tr>
+                <td class="mono">{{ m.serial_number }}</td><td><strong>{{ m.part_name }}</strong></td><td>{{ m.entry_date or '' }}</td>
+                <td>{% if m.invoice_number and not m.invoice_is_vendor_name %}<a href="{{ url_for('index.invoice_download', invoice_number=m.invoice_number) }}">{{ m.invoice_number }}</a>{% else %}{{ m.invoice_number }}{% endif %}</td>
+                <td>{{ m.box_number }}</td><td>{{ m.pod_number }}</td>
+            </tr>{% endfor %}</tbody>
+        </table></div>
+        {% endif %}
+        {% if serial.history %}
+        <h3 class="lookup-subheading">Used history</h3>
+        <ul class="lookup-list">
+            {% for r in serial.history[:5] %}
+            {% set out = r.outgoing_info[0] if r.outgoing_info else None %}
+            <li><a href="{{ url_for('work_orders.index', q=r.order_id) }}"><strong>{{ r.order_id }}</strong></a>
+                {% if r.get('Document #') %}<span class="text-muted">· {{ r.get('Document #') }}</span>{% endif %}
+                <span class="badge bg-{{ 'secondary' if r.record_source == 'legacy_word' else 'primary' }}">{{ 'Legacy Word' if r.record_source == 'legacy_word' else 'MES' }}</span>
+                {% if out %}<span class="text-muted">· {{ out['Customer'] }}{% if out['Outgoing Form#'] %} · Outgoing {{ out['Outgoing Form#'] }}{% endif %}</span>{% endif %}</li>
+            {% endfor %}
+        </ul>
+        {% if serial.history|length > 5 %}<p class="lookup-note">and {{ serial.history|length - 5 }} more — see full serial details.</p>{% endif %}
+        {% endif %}
+    </section>
+
+    {# ---------- 2. SO number ---------- #}
+    {% set so_count = (1 if so.workflow else 0) + so.records|length %}
+    <section class="lookup-section{{ ' is-empty' if not so_count }}" aria-labelledby="so-heading">
+        <header class="lookup-section-header">
+            <h2 id="so-heading">SO number</h2>
+            <span class="result-count">{{ so.records|length if so.number else 0 }} {{ 'record' if so.records|length == 1 else 'records' }}</span>
+            {% if so.number %}<a class="lookup-more" href="{{ url_for('work_orders.index', q=so.number) }}">Work orders, PDFs and outgoing documents →</a>{% endif %}
+        </header>
+        {% if so.error %}<p class="lookup-error">{{ so.error }}</p>{% endif %}
+        {% if not so.number %}
+        <p class="lookup-empty">Not an SO number. SO numbers have 8 digits, e.g. SO-20260295.</p>
+        {% else %}
+            {% if so.workflow %}
+            <p class="lookup-summary"><strong>{{ so.number }}</strong>{% if so.workflow.customer %} · {{ so.workflow.customer }}{% endif %}
+                · Owner: {{ so.workflow.owner }} · Status: <strong>{{ so.workflow.status_label }}</strong></p>
+            {% endif %}
+            {% if so.records %}
+            <ul class="lookup-list">
+                {% for r in so.records[:5] %}
+                <li><strong>{{ r.sales_order }}</strong>{% if r.get('Document #') %} <span class="text-muted">· {{ r.get('Document #') }}</span>{% endif %}
+                    <span class="badge bg-{{ 'secondary' if r.record_source == 'legacy_word' else 'primary' }}">{{ 'Legacy Word' if r.record_source == 'legacy_word' else 'MES · Release P' ~ r.release_number }}</span>
+                    <span class="text-muted">· {{ r.details|length }} product line{{ 's' if r.details|length != 1 }}</span></li>
+                {% endfor %}
+            </ul>
+            {% if so.records|length > 5 %}<p class="lookup-note">and {{ so.records|length - 5 }} more — open work orders for all records.</p>{% endif %}
+            {% elif not so.workflow %}
+            <p class="lookup-empty">No workflow or work-order records found for {{ so.number }}.</p>
+            {% endif %}
+        {% endif %}
+    </section>
+
+    {# ---------- 3. Inventory item ---------- #}
+    {% set item_count = (1 if inventory.name else 0) + inventory.matches|length %}
+    <section class="lookup-section{{ ' is-empty' if not item_count }}" aria-labelledby="item-heading">
+        <header class="lookup-section-header">
+            <h2 id="item-heading">Inventory item</h2>
+            <span class="result-count">{{ item_count }} {{ 'item' if item_count == 1 else 'items' }}</span>
+            {% if inventory.name %}<a class="lookup-more" href="{{ url_for('inventory_count.index', item=inventory.name) }}">Full stock details →</a>{% endif %}
+        </header>
+        {% if inventory.error %}<p class="lookup-error">{{ inventory.error }}</p>{% endif %}
+        {% if so.number %}
+        <p class="lookup-empty">SO numbers are not inventory items.</p>
+        {% elif not item_count %}
+        <p class="lookup-empty">No inventory item matches “{{ query }}”.</p>
+        {% endif %}
+        {% if inventory.name %}
+        <div class="lookup-item">
+            <a class="lookup-item-name" href="{{ url_for('inventory_count.index', item=inventory.name) }}">{{ inventory.name }}</a>
+            {% if inventory.data %}
+            <div class="lookup-metrics">
+                <div><span>On Hand</span><strong>{{ inventory.data.on_hand if inventory.data.on_hand is not none else '—' }}</strong></div>
+                <div><span>On Hand − WIP</span><strong class="{{ 'text-danger' if inventory.data.on_hand_wip is not none and inventory.data.on_hand_wip < 0 }}">{{ inventory.data.on_hand_wip if inventory.data.on_hand_wip is not none else '—' }}</strong></div>
+                <div><span>Open sales-order lines</span><strong>{{ inventory.data.so_rows|length }}</strong></div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if inventory.matches %}
+        <h3 class="lookup-subheading">{{ 'Other matching items' if inventory.name else 'Matching items' }}</h3>
+        <ul class="lookup-chips">{% for name in inventory.matches %}<li><a href="{{ url_for('inventory_count.index', item=name) }}">{{ name }}</a></li>{% endfor %}</ul>
+        {% endif %}
+    </section>
+</main>
+</body>
+</html>
