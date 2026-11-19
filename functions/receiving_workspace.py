@@ -137,6 +137,10 @@ class WorkspaceStore:
         for key, record in original_keys:
             rows.append(dict(record, row_id=secrets.token_hex(12), original=deepcopy(record),
                              original_key=key, db_id=None, db_snapshot=None, saved_serial=None))
+        # Link children to their parent's stable workspace row ID.
+        by_sheet_row = {row['_row']: row['row_id'] for row in rows}
+        for row in rows:
+            row['parent_row_id'] = by_sheet_row.get(row.pop('parent_row', None))
         book = load_workbook(BytesIO(content), read_only=True, data_only=True)
         try:
             state = {'id': secrets.token_hex(32), 'database_mode': True, 'revision': 1, 'created_at': now(),
@@ -155,10 +159,13 @@ class WorkspaceStore:
         book = load_workbook(self.path / f"{state['id']}.xlsx")
         sheet = book['Receiving Log']
         fields = ('entry_date', 'invoice_number', 'box_number', 'pod_number',
-                  'part_number', 'serial_number', 'quantity', 'Reference')
+                  'part_number', 'serial_number', 'quantity', 'Reference', 'item_role', 'ordering_model', 'parent_number')
+        for column, title in enumerate(('Role', 'Ordering Model', 'Parent Row'), 9):
+            sheet.cell(1, column).value = title
+        sheet_rows = {row['row_id']: number for number, row in enumerate(state['rows'], 2)}
         for number, row in enumerate(state['rows'], 2):
             for column, key in enumerate(fields, 1):
-                value = row.get(key)
+                value = sheet_rows.get(row.get('parent_row_id')) if key == 'parent_number' else row.get(key)
                 cell = sheet.cell(number, column)
                 cell.value = None if value == '' else value
                 if isinstance(cell.value, str):
@@ -242,9 +249,13 @@ def search_invoice(engine, workspace, invoice, expected_id, revision):
     book = Workbook()
     book.active.title = 'Receiving Log'
     fields = ('entry_date', 'invoice_number', 'box_number', 'pod_number', 'part_number', 'serial_number', 'quantity', 'Reference')
-    book.active.append(['Date', 'Inv#', 'Box #', 'POD#', 'Part#', 'SN#', 'QTY', 'Reference'])
+    book.active.append(['Date', 'Inv#', 'Box #', 'POD#', 'Part#', 'SN#', 'QTY', 'Reference', 'Role', 'Ordering Model', 'Parent Row'])
+    sheet_rows = {record['id']: number for number, record in enumerate(records, 2)}
     for record in records:
-        book.active.append([record.get(key) for key in fields])
+        # A parent outside this invoice (or deleted) is kept as parent_id only.
+        parent = sheet_rows.get(record.get('parent_id')) if record.get('item_role') == 'child' else None
+        book.active.append([record.get(key) for key in fields] +
+                           [record.get('item_role'), record.get('ordering_model'), parent])
     book.create_sheet('Read Me').append(['Field', 'Value'])
     book.create_sheet('Exceptions').append(['Type', 'Line', 'Part', 'Details'])
     content = BytesIO()
@@ -252,7 +263,8 @@ def search_invoice(engine, workspace, invoice, expected_id, revision):
     book.close()
     state = workspace.create(content.getvalue(), expected_id, revision)
     for row, record in zip(state['rows'], records):
-        row.update(db_id=record['id'], db_snapshot=snapshot([record]), saved_serial=clean(record['serial_number']))
+        row.update(db_id=record['id'], db_snapshot=snapshot([record]), saved_serial=clean(record['serial_number']),
+                   parent_id=record.get('parent_id'))
     state['mode'] = 'entry'
     workspace.persist(state)
     return state
@@ -264,6 +276,25 @@ def row_status(row):
     return 'Saved' if row['serial_number'] == row['saved_serial'] else 'SN changed - save to database'
 
 
+PUBLIC_ROW_FIELDS = ('row_id', 'entry_date', 'invoice_number', 'box_number', 'pod_number',
+                     'part_number', 'serial_number', 'quantity', 'Reference', 'db_id', 'saved_serial',
+                     'item_role', 'ordering_model')
+
+
+def public_row(row):
+    return dict({key: row.get(key) or '' if key in ('item_role', 'ordering_model') else row.get(key, '')
+                 for key in PUBLIC_ROW_FIELDS},
+                row_version=row.get('db_snapshot'), parent_row_id=row.get('parent_row_id'),
+                parent_id=row.get('parent_id'))
+
+
+def public_summary(state):
+    """Lightweight workspace metadata for per-row responses (no row list)."""
+    return {'id': state['id'], 'revision': state['revision'], 'mode': state.get('mode', 'entry'),
+            'invoice_scope': state.get('invoice_scope', ''), 'database_saved_at': state['database_saved_at'],
+            'pending': bool(state.get('pending'))}
+
+
 def public_state(state):
     return {'id': state['id'], 'revision': state['revision'],
             'mode': state.get('mode', 'entry'), 'invoice_scope': state.get('invoice_scope', ''),
@@ -272,11 +303,15 @@ def public_state(state):
             'needs_initialization': any(row['db_id'] is None for row in state['rows']),
             'missing_ids': [row['db_id'] for row in state['rows'] if row.get('db_missing')],
             'summary': state['summary'], 'exceptions': state['exceptions'],
-            'rows': [dict({key: row.get(key, '') for key in (
-                'row_id', 'entry_date', 'invoice_number', 'box_number', 'pod_number',
-                'part_number', 'serial_number', 'quantity', 'Reference', 'db_id', 'saved_serial')},
-                          row_version=row.get('db_snapshot'))
-                     for row in state['rows'] if not row.get('db_missing')]}
+            'rows': with_parent_numbers([public_row(row) for row in state['rows'] if not row.get('db_missing')])}
+
+
+def with_parent_numbers(rows):
+    """Add the 1-based displayed row number of each child's parent."""
+    numbers = {row['row_id']: number for number, row in enumerate(rows, 1)}
+    for row in rows:
+        row['parent_number'] = numbers.get(row.get('parent_row_id'))
+    return rows
 
 
 def update_serials(state, changes):
@@ -314,6 +349,7 @@ def finalize_pending(state, persist):
         row = by_id[binding['row_id']]
         after = binding['after']
         row['db_id'] = after['id']
+        row['parent_id'] = after.get('parent_id')
         row['db_snapshot'] = snapshot([after])
         row['saved_serial'] = clean(after['serial_number'])
     state['mode'] = 'entry'
@@ -375,6 +411,9 @@ def load_database(engine, state, persist):
         day = current['entry_date']
         row['entry_date'] = day.isoformat() if hasattr(day, 'isoformat') else clean(day)
         row['quantity'] = current['quantity']
+        row['item_role'] = clean(current.get('item_role'))
+        row['ordering_model'] = clean(current.get('ordering_model'))
+        row['parent_id'] = current.get('parent_id')
         row['saved_serial'] = row['serial_number']
         row['db_snapshot'] = snapshot([current])
     if changed:
@@ -394,16 +433,21 @@ def save_row(engine, state, row_id, value, expected_version, persist):
     temporary = {'rows': [deepcopy(row)], 'revision': 0, 'pending': None}
     update_serials(temporary, [{'row_id': row_id, 'serial_number': value}])
     value = temporary['rows'][0]['serial_number']
+    key = serial_key(value)
     with engine.connect() as connection:
         try:
-            lock_receiving(connection)
+            # Row-level locking: concurrent scans of other rows/invoices proceed;
+            # batch writers and scans of the same SN are serialized.
+            lock_receiving(connection, serials=[key])
             table = receiving_table(connection)
-            key = serial_key(value)
-            condition = table.c.id == row['db_id']
-            if key not in ('', 'NA'):
-                condition = or_(condition, func.upper(func.trim(table.c.serial_number)) == key)
-            current_rows = [dict(record) for record in connection.execute(select(table).where(condition)).mappings()]
-            current = next((record for record in current_rows if record['id'] == row['db_id']), None)
+            current = next((dict(record) for record in connection.execute(
+                select(table).where(table.c.id == row['db_id']).with_for_update()).mappings()
+                if record['id'] == row['db_id']), None)
+            current_rows = [current] if current is not None else []
+            if current is not None and key not in ('', 'NA'):
+                current_rows += [dict(record) for record in connection.execute(select(table).where(
+                    func.upper(func.trim(table.c.serial_number)) == key, table.c.id != row['db_id'])).mappings()
+                    if record['id'] != row['db_id'] and serial_key(record['serial_number']) == key]
             if current is None:
                 raise WorkspaceConflict('This database row was deleted. Reload the table; no replacement row was inserted.')
             scope = state.get('invoice_scope') or single_invoice(state['rows'])
@@ -541,7 +585,21 @@ def save_database(engine, state, persist):
             table = receiving_table(connection)
             if 'id' not in table.c:
                 raise ValueError('receiving_log.id is required for incremental saving.')
-            existing_rows = [dict(row) for row in connection.execute(select(table).order_by(table.c.id)).mappings()]
+            # Read only rows that can affect this save, not the whole table:
+            # bound/pending IDs, rows of the workspace's invoice(s) (all
+            # signature matches share an invoice) and rows sharing its serials.
+            ids = {row['db_id'] for row in state['rows'] if row['db_id'] is not None}
+            if state.get('pending'):
+                ids.update(binding['after']['id'] for binding in state['pending']['bindings'])
+            invoices = {clean(row['invoice_number']) for row in state['rows']}
+            invoices.update(clean((row.get('original') or {}).get('invoice_number')) for row in state['rows'])
+            invoices.discard('')
+            serial_keys = {serial_key(row['serial_number']) for row in state['rows']} - {'', 'NA'}
+            condition = or_(table.c.id.in_(sorted(ids)),
+                            func.trim(table.c.invoice_number).in_(sorted(invoices)),
+                            func.upper(func.trim(table.c.serial_number)).in_(sorted(serial_keys)))
+            existing_rows = [dict(row) for row in connection.execute(
+                select(table).where(condition).order_by(table.c.id)).mappings()]
             existing = {row['id']: row for row in existing_rows}
             if len(existing) != len(existing_rows) or None in existing:
                 raise ValueError('Receiving IDs must be unique and non-null.')
@@ -608,9 +666,16 @@ def save_database(engine, state, persist):
             if any(count > max(expected_counts[key] - existing_counts[key], 0)
                    for key, count in insert_counts.items()):
                 raise WorkspaceConflict('Matching shipment units already exist with different serials. Nothing inserted. Use the original workspace or reconcile those receipts before saving a regenerated table.')
-            bindings = []
+            bindings, written = [], {}
             for row, actual, data, changed in plans:
                 before = deepcopy(actual)
+                # Children follow their parent; link to the parent's database ID.
+                if row.get('parent_row_id') and 'parent_id' in table.c:
+                    parent_id = written.get(row['parent_row_id'])
+                    if parent_id is None:
+                        raise WorkspaceConflict(f'Child row for {row["part_number"]} precedes its parent. Nothing saved.')
+                    changed = changed or actual is None or actual.get('parent_id') != parent_id
+                    data = dict(data, parent_id=parent_id)
                 if actual is None:
                     actual = dict(connection.execute(table.insert().values(**data).returning(table)).mappings().one())
                     counts['inserted'] += 1
@@ -619,6 +684,7 @@ def save_database(engine, state, persist):
                     counts['updated'] += 1
                 else:
                     counts['unchanged' if row['db_id'] is not None else 'linked'] += 1
+                written[row['row_id']] = actual['id']
                 bindings.append({'row_id': row['row_id'], 'before': before, 'after': actual})
             state['pending'] = {'bindings': bindings, 'saved_at': now()}
             persist(state)  # durable journal BEFORE the transaction can commit

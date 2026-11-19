@@ -31,9 +31,12 @@
     const nextBlankRow = (rows, currentId, eligible) => {
         const index = rows.findIndex(row => row.row_id === currentId), current = rows[index];
         if (!current) return null;
-        return rows.slice(index + 1).find(row =>
-            ['box_number', 'pod_number', 'part_number'].every(field => row[field] === current[field]) &&
-            !row.serial_number.trim() && eligible(row)) || null;
+        for (let i = index + 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (['box_number', 'pod_number', 'part_number'].every(field => row[field] === current[field]) &&
+                !row.serial_number.trim() && eligible(row)) return row;
+        }
+        return null;
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = {parseColumn, duplicateIds, nextBlankRow, canScanRow, validateSerialPaste};
     if (typeof document === 'undefined') return;
@@ -53,60 +56,108 @@
     });
     const host = document.getElementById('receiving-workspace');
     if (!host) return;
-    let state = JSON.parse(document.getElementById('receiving-state').textContent);
+    const state = JSON.parse(document.getElementById('receiving-state').textContent);
     const csrf = host.dataset.csrf, table = document.getElementById('entry-table');
     const tableRows = [...table.tBodies[0].rows];
-    const inputs = new Map(tableRows.map(row => [row.dataset.rowId, row.querySelector('.sn-input')]));
+    // O(1) lookups. Large invoices previously rescanned every row on each keystroke.
+    const trById = new Map(tableRows.map(tr => [tr.dataset.rowId, tr]));
+    const inputs = new Map(tableRows.map(tr => [tr.dataset.rowId, tr.querySelector('.sn-input')]));
+    const rowById = new Map(state.rows.map(row => [row.row_id, row]));
+    // Table order never changes; row objects are updated in place after each save.
+    const ordered = tableRows.map(tr => rowById.get(tr.dataset.rowId)).filter(Boolean);
     const pending = new Map(), errors = new Map();
     const message = document.getElementById('entry-message');
     const search = document.getElementById('entry-search'), blankOnly = document.getElementById('only-blank');
     const unsavedOnly = document.getElementById('only-unsaved');
-    let queue = Promise.resolve(), inFlightId = null, duplicates = new Set(), cellGrid = null;
+    let queue = Promise.resolve(), inFlightId = null, cellGrid = null, visible = 0, countFrame = 0;
     const showMessage = (text, error = false) => {
         message.textContent = text;
         message.className = `small mb-2 ${error ? 'entry-error' : 'entry-success'}`;
     };
-    const refresh = (filter = true) => {
-        if (filter && cellGrid) cellGrid.clear();
-        const byId = new Map(state.rows.map(row => [row.row_id, row]));
-        duplicates = duplicateIds(state.rows.map(row => ({...row, serial_number: inputs.get(row.row_id).value})));
-        let visible = 0, blanks = 0;
-        const query = search.value.trim().toUpperCase();
-        for (const tr of tableRows) {
-            const row = byId.get(tr.dataset.rowId);
-            if (!row) { tr.hidden = true; continue; }
-            const input = inputs.get(row.row_id), blank = !input.value.trim(), dirty = pending.has(row.row_id);
-            blanks += blank;
-            tr.classList.toggle('db-pending', dirty); tr.classList.toggle('db-saved', !dirty);
-            tr.classList.toggle('sn-duplicate', duplicates.has(row.row_id));
-            input.setAttribute('aria-invalid', duplicates.has(row.row_id) || errors.has(row.row_id) ? 'true' : 'false');
-            tr.querySelector('.row-save-status').textContent = duplicates.has(row.row_id) ? 'Duplicate SN' :
-                errors.has(row.row_id) ? `Error · #${row.db_id}` : inFlightId === row.row_id ? `Saving · #${row.db_id}` :
-                dirty ? `Changed · #${row.db_id}` : `Saved · #${row.db_id}`;
-            tr.querySelector('.row-save-status').title = errors.get(row.row_id) || '';
-            tr.querySelector('.row-save').textContent = input.readOnly ? 'Correct' : 'Save';
-            tr.querySelector('.row-save').setAttribute('aria-label', `${input.readOnly ? 'Correct' : 'Save'} SN for database row ${row.db_id}`);
-            if (filter) {
-                const text = [row.box_number, row.pod_number, row.part_number, input.value, row.Reference, row.invoice_number].join(' ').toUpperCase();
-                tr.hidden = !text.includes(query) || (blankOnly.checked && !blank) || (unsavedOnly.checked && !dirty && !errors.has(row.row_id));
-            }
-            if (!tr.hidden) visible++;
+    // Incremental duplicate index: normalized SN -> IDs of rows currently holding it.
+    const serialIndex = new Map(), keyById = new Map();
+    const isDuplicate = id => { const key = keyById.get(id); return Boolean(key) && serialIndex.get(key).size > 1; };
+    const indexSerial = id => {
+        // Re-indexes one row; returns the rows whose duplicate status may have changed.
+        const before = keyById.get(id) || '', normalized = normalizeSN(inputs.get(id).value);
+        const after = normalized && normalized !== 'NA' ? normalized : '';
+        if (before === after) return [id];
+        const affected = new Set([id]);
+        if (before) {
+            const holders = serialIndex.get(before);
+            holders.delete(id);
+            holders.forEach(other => affected.add(other));
+            if (!holders.size) serialIndex.delete(before);
         }
+        if (after) {
+            if (!serialIndex.has(after)) serialIndex.set(after, new Set());
+            const holders = serialIndex.get(after);
+            holders.forEach(other => affected.add(other));
+            holders.add(id);
+            keyById.set(id, after);
+        } else keyById.delete(id);
+        return [...affected];
+    };
+    const updateCount = () => {
+        countFrame = 0;
+        let blanks = 0;
+        for (const id of rowById.keys()) if (inputs.has(id) && !inputs.get(id).value.trim()) blanks++;
         document.getElementById('entry-count').textContent = `${visible} / ${state.rows.length} database rows · ${blanks} blank SN · ${pending.size} waiting / error`;
+    };
+    // Coalesce counter updates: a 2,000-row paste recounts once, not 2,000 times.
+    const scheduleCount = () => {
+        if (!countFrame) countFrame = (root.requestAnimationFrame || (fn => setTimeout(fn, 16)))(updateCount);
+    };
+    const updateForms = () => {
         for (const id of ['shipment-upload-form', 'invoice-search-form']) {
             const form = document.getElementById(id);
             if (form) { form.elements.workspace_id.value = state.id; form.elements.revision.value = state.revision; }
         }
     };
-    const sync = next => {
-        state = next;
-        for (const row of state.rows) {
-            if (!inputs.has(row.row_id)) continue;
-            if (!pending.has(row.row_id)) inputs.get(row.row_id).value = row.serial_number;
-            const tr = inputs.get(row.row_id).closest('tr');
-            for (const cell of tr.querySelectorAll('[data-field]')) cell.textContent = row[cell.dataset.field] ?? '';
+    const renderRow = id => {
+        const tr = trById.get(id), row = rowById.get(id), input = inputs.get(id);
+        if (!tr || !row) return;
+        const dirty = pending.has(id), duplicate = isDuplicate(id);
+        const status = tr.querySelector('.row-save-status'), button = tr.querySelector('.row-save');
+        tr.classList.toggle('db-pending', dirty); tr.classList.toggle('db-saved', !dirty);
+        tr.classList.toggle('sn-duplicate', duplicate);
+        input.setAttribute('aria-invalid', duplicate || errors.has(id) ? 'true' : 'false');
+        status.textContent = duplicate ? 'Duplicate SN' :
+            errors.has(id) ? `Error · #${row.db_id}` : inFlightId === id ? `Saving · #${row.db_id}` :
+            dirty ? `Changed · #${row.db_id}` : `Saved · #${row.db_id}`;
+        status.title = errors.get(id) || '';
+        const label = input.readOnly ? 'Correct' : 'Save';
+        button.textContent = label;
+        button.setAttribute('aria-label', `${label} SN for database row ${row.db_id}`);
+    };
+    const renderRows = ids => { for (const id of ids) renderRow(id); scheduleCount(); };
+    // Full pass over all rows: only for filter changes and the initial load.
+    const refresh = () => {
+        if (cellGrid) cellGrid.clear();
+        const query = search.value.trim().toUpperCase();
+        visible = 0;
+        for (const tr of tableRows) {
+            const id = tr.dataset.rowId, row = rowById.get(id);
+            if (!row) { tr.hidden = true; continue; }
+            const input = inputs.get(id), blank = !input.value.trim(), dirty = pending.has(id);
+            const text = [row.box_number, row.pod_number, row.part_number, input.value, row.Reference, row.invoice_number, row.item_role, row.ordering_model].join(' ').toUpperCase();
+            tr.hidden = !text.includes(query) || (blankOnly.checked && !blank) || (unsavedOnly.checked && !dirty && !errors.has(id));
+            if (!tr.hidden) visible++;
         }
-        refresh(false);
+        updateCount();
+        updateForms();
+    };
+    // /receiving/row returns only the saved row plus workspace metadata.
+    const applySaved = result => {
+        Object.assign(state, result.workspace);
+        const saved = result.row, row = rowById.get(saved.row_id);
+        if (!row) return;
+        Object.assign(row, saved);
+        const input = inputs.get(saved.row_id);
+        if (!pending.has(saved.row_id)) input.value = row.serial_number;
+        for (const cell of trById.get(saved.row_id).querySelectorAll('[data-field]')) cell.textContent = row[cell.dataset.field] ?? '';
+        renderRows(indexSerial(saved.row_id));
+        updateForms();
     };
     const postRow = async (id, edit) => {
         const response = await fetch('/receiving/row', {method: 'POST', credentials: 'same-origin', headers: {
@@ -115,6 +166,7 @@
         let result;
         try { result = await response.json(); } catch (_) { throw Error('Database response interrupted. Retry this row.'); }
         if (!response.ok) throw Error(result.error || 'Row save failed.');
+        if (!result.row || result.row.row_id !== id) throw Error('The server did not confirm this row. Refresh before retrying.');
         return result;
     };
     const flush = (onlyId = null) => {
@@ -123,47 +175,46 @@
             while (true) {
                 const id = [...pending.keys()].find(key => !failed.has(key) && (!onlyId || key === onlyId));
                 if (!id) break;
-                refresh(false);
-                if (duplicates.has(id)) {
-                    errors.set(id, 'Duplicate SN. Correct the highlighted values before saving.'); failed.add(id); continue;
+                if (isDuplicate(id)) {
+                    errors.set(id, 'Duplicate SN. Correct the highlighted values before saving.'); failed.add(id);
+                    renderRow(id); continue;
                 }
                 const edit = {...pending.get(id)};
-                inFlightId = id; refresh(false);
+                inFlightId = id; renderRow(id);
                 try {
                     const result = await postRow(id, edit);
                     const latest = pending.get(id);
                     if (latest && latest.value === edit.value) pending.delete(id);
-                    else if (latest) latest.version = result.workspace.rows.find(row => row.row_id === id).row_version;
+                    else if (latest) latest.version = result.row.row_version;
                     errors.delete(id);
                     if (!pending.has(id)) inputs.get(id).readOnly = true;
-                    sync(result.workspace);
-                    const saved = state.rows.find(row => row.row_id === id);
-                    showMessage(`SN saved directly to database row #${saved.db_id}.`);
+                    applySaved(result);
+                    showMessage(`SN saved directly to database row #${result.row.db_id}.`);
                 } catch (error) {
                     errors.set(id, error.message); failed.add(id); showMessage(error.message, true);
-                } finally { inFlightId = null; refresh(false); }
+                } finally { inFlightId = null; renderRow(id); scheduleCount(); }
             }
             if (errors.size) showMessage('Some rows were not saved. Hover their Error status for details; correct or retry each row. Refresh to see external database changes.', true);
-            refresh(false);
         });
         return queue;
     };
     const changed = input => {
-        const id = input.closest('tr').dataset.rowId, row = state.rows.find(row => row.row_id === id);
+        const id = input.closest('tr').dataset.rowId, row = rowById.get(id);
         const existing = pending.get(id);
         if (input.value.trim() === row.serial_number && inFlightId !== id) { pending.delete(id); errors.delete(id); }
         else pending.set(id, {value: input.value, version: existing ? existing.version : row.row_version});
-        errors.delete(id); refresh(false);
+        errors.delete(id);
+        renderRows(indexSerial(id));
         showMessage('Correction entered. Press Enter or Save, or leave the cell to save it.');
     };
     const focusInput = input => { if (input) { input.focus(); input.select(); input.scrollIntoView({block: 'nearest', inline: 'nearest'}); } };
     for (const [id, input] of inputs) {
         input.addEventListener('focus', () => {
-            const row = state.rows.find(row => row.row_id === id);
+            const row = rowById.get(id);
             if (input.disabled || inFlightId === id || pending.has(id)) return;
             if (input.readOnly && canScanRow(row) && !input.value.trim()) {
                 input.readOnly = false;
-                refresh(false);
+                renderRow(id);
                 showMessage('Ready to scan into this blank row. Enter saves and moves to the next blank row in this group.');
             }
         });
@@ -184,28 +235,26 @@
                     focusInput(input);
                     return;
                 }
-                refresh(false);
-                const ordered = tableRows.map(tr => state.rows.find(row => row.row_id === tr.dataset.rowId)).filter(Boolean);
                 const next = nextBlankRow(ordered, id, row => {
                     const target = inputs.get(row.row_id);
-                    return target && !target.disabled && !target.closest('tr').hidden &&
+                    return target && !target.disabled && !trById.get(row.row_id).hidden &&
                         !target.value.trim() && !pending.has(row.row_id) && !errors.has(row.row_id);
                 });
                 if (next) {
                     const target = inputs.get(next.row_id);
                     target.readOnly = false;
-                    refresh(false);
+                    renderRow(next.row_id);
                     focusInput(target);
                 } else {
                     showMessage('No more visible blank SN rows in this carton / POD / product group. Choose another group to continue.');
                 }
-            } finally { advancing = false; refresh(false); }
+            } finally { advancing = false; renderRow(id); scheduleCount(); }
         });
-        input.closest('tr').querySelector('.row-save').addEventListener('click', () => {
-            if (input.readOnly) { input.readOnly = false; refresh(false); focusInput(input); return; }
-            if (!pending.has(id) && input.value.trim() !== state.rows.find(row => row.row_id === id).serial_number) changed(input);
+        trById.get(id).querySelector('.row-save').addEventListener('click', () => {
+            if (input.readOnly) { input.readOnly = false; renderRow(id); focusInput(input); return; }
+            if (!pending.has(id) && input.value.trim() !== rowById.get(id).serial_number) changed(input);
             if (pending.has(id)) flush(id);
-            else { input.readOnly = true; refresh(false); }
+            else { input.readOnly = true; renderRow(id); }
         });
     }
     if (root.ReceivingGrid) cellGrid = root.ReceivingGrid.attach({
@@ -214,8 +263,7 @@
         validate: root.ReceivingGrid.validateValue,
         canEdit: input => {
             const id = input.closest('tr').dataset.rowId;
-            const row = state.rows.find(item => item.row_id === id);
-            return inFlightId !== id && (!input.readOnly || canScanRow(row));
+            return inFlightId !== id && (!input.readOnly || canScanRow(rowById.get(id)));
         },
         applyPaste: prepared => {
             const changes = prepared.map(({input, value}) => ({
@@ -270,5 +318,8 @@
         invoiceSearch.elements.revision.value = state.revision;
         invoiceSearch.submit();
     });
+    // Initial load: index all serials once, render every row once, then filter.
+    for (const id of rowById.keys()) if (inputs.has(id)) indexSerial(id);
+    for (const id of rowById.keys()) renderRow(id);
     refresh();
 })(globalThis);

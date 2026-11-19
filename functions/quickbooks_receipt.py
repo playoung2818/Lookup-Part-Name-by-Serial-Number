@@ -51,6 +51,11 @@ def parse_receipt(path):
                     # Use the Item column, not the descriptive model: the latter
                     # can differ from the actual QuickBooks accounting part.
                     item = raw_item.replace('\n', '').strip()
+                    # A long Item cell can wrap into the Cost column, gluing the
+                    # cost onto the name (e.g. '..._Mod_15CM44.00'); remove it.
+                    bleed = re.search(r'(\d[\d,]*\.\d{2})$', item)
+                    if bleed and cost and money(bleed.group(1)) == money(cost):
+                        item = item[:bleed.start()].strip()
                     part = item.split(':', 1)[-1].strip()
                     quantity = money(qty)
                     if not quantity.is_finite() or quantity < 0 or quantity != quantity.to_integral_value():

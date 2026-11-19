@@ -9,14 +9,16 @@
     </div>
     <div class="table-responsive">
         <table class="table table-sm table-bordered mb-0" id="template-table">
-            <thead><tr><th>#</th><th>Date</th><th>Inv# (locked)</th><th>Box #</th><th>POD#</th><th>Part#</th><th>SN#</th><th>Qty</th><th>Reference</th></tr></thead>
-            <tbody>{% for row in shipment.rows %}<tr data-row-id="{{ row.row_id }}">
+            <thead><tr><th>#</th><th>Date</th><th>Inv# (locked)</th><th>Box #</th><th>POD#</th><th>Part#</th><th>SN#</th><th>Qty</th><th>Reference</th><th>Parent/Child</th><th>Ordering model</th></tr></thead>
+            <tbody>{% for row in shipment.rows %}<tr data-row-id="{{ row.row_id }}" class="{{ 'bom-' ~ row.item_role if row.item_role else '' }}">
                 <th>{{ loop.index }}</th>
                 <td><input class="form-control" type="date" data-field="entry_date" value="{{ row.entry_date }}" aria-label="Date row {{ loop.index }}"></td>
                 <td>{{ row.invoice_number }}</td>
                 {% for field in ['box_number', 'pod_number', 'part_number', 'serial_number', 'quantity', 'Reference'] %}
                 <td><input class="form-control" style="min-width: 130px" type="{{ 'number' if field == 'quantity' else 'text' }}" {% if field == 'quantity' %}min="0.000001" step="any"{% else %}maxlength="{{ 10000 if field == 'Reference' else 255 }}"{% endif %} data-field="{{ field }}" value="{{ row.get(field, '') }}" aria-label="{{ field }} row {{ loop.index }}"></td>
                 {% endfor %}
+                <td class="bom-role small text-nowrap">{% if row.item_role == 'parent' %}Parent{% elif row.item_role == 'child' %}&#8627; Child of row {{ row.parent_number or '?' }}{% endif %}</td>
+                <td class="small text-nowrap">{{ row.ordering_model }}</td>
             </tr>{% endfor %}</tbody>
         </table>
     </div>

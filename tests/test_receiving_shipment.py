@@ -104,10 +104,19 @@ class ShipmentTests(unittest.TestCase):
     def test_serial_invoice_and_duplicates_block_generation(self):
         with self.assertRaisesRegex(ValueError, 'invoice mismatch'):
             read_serials(self.serials, 'OTHER')
+        # An exact repeat (same POD + model) is an export glitch: used once, reported.
         make_excel(self.serials, [
             ['Customer PO No', 'Ordering Model', 'S/N', 'Invoice No'],
             ['POD-1', 'Model-A', 'same', '8003610'],
             ['POD-1', 'Model-A', 'SAME', '8003610']])
+        pool, _, duplicates = read_serials(self.serials, '8003610')
+        self.assertEqual(list(pool[('POD-1', 'Model-A')]), ['same'])
+        self.assertEqual(duplicates, [[3, 'POD-1', 'Model-A', 'SAME']])
+        # The same SN on a different POD or model is ambiguous: still blocked.
+        make_excel(self.serials, [
+            ['Customer PO No', 'Ordering Model', 'S/N', 'Invoice No'],
+            ['POD-1', 'Model-A', 'same', '8003610'],
+            ['POD-2', 'Model-A', 'SAME', '8003610']])
         with self.assertRaisesRegex(ValueError, 'Duplicate serial'):
             read_serials(self.serials, '8003610')
 
@@ -205,6 +214,28 @@ class ShipmentRouteTests(ShipmentTests):
         self.assertIsNone(book['Receiving Log']['F4'].value)
         book.close()
         self.assertEqual(self.client.post('/receiving/download', data=dict(data, format='docx')).status_code, 200)
+
+    def test_row_save_returns_only_saved_row_without_reloading_invoice(self):
+        _, state = self.post_generate()
+        with patch('routes.Receiving_Routes.load_database') as reload_all:
+            response = self.client.post('/receiving/row', headers={'X-CSRF-Token': self.csrf},
+                                        json=self.row_payload(state, 1, 'FAST-SCAN'))
+        self.assertEqual(response.status_code, 200)
+        reload_all.assert_not_called()
+        self.assertNotIn('rows', response.json['workspace'])
+        self.assertEqual(response.json['workspace']['id'], state['id'])
+        self.assertGreater(response.json['workspace']['revision'], state['revision'])
+        row = response.json['row']
+        self.assertEqual((row['row_id'], row['serial_number'], row['saved_serial']),
+                         (state['rows'][1]['row_id'], 'FAST-SCAN', 'FAST-SCAN'))
+        self.assertNotEqual(row['row_version'], state['rows'][1]['row_version'])
+        self.assertNotIn('db_snapshot', row)
+        # The returned version is immediately usable for a follow-up correction.
+        again = self.client.post('/receiving/row', headers={'X-CSRF-Token': self.csrf}, json={
+            'workspace_id': state['id'], 'row_id': row['row_id'], 'row_version': row['row_version'],
+            'serial_number': 'FAST-SCAN-2'})
+        self.assertEqual(again.status_code, 200)
+        self.assertEqual(self.engine.rows[1]['serial_number'], 'FAST-SCAN-2')
 
     def test_refresh_uses_database_not_file_cached_values(self):
         _, state = self.post_generate()

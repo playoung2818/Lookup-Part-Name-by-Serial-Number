@@ -50,3 +50,8 @@
     .entry-grid { max-height: 72vh; }
     .workspace-toolbar .btn { font-size: .85rem; }
 }
+/* Configured systems: parent (QuickBooks item) with indented child components. */
+#entry-table tr.bom-parent > td, #template-table tr.bom-parent > td { border-top: 2px solid #94a3b8; }
+#entry-table tr.bom-child .part-cell { padding-left: 1.6rem; font-weight: 400; }
+#entry-table tr.bom-child > td:not(.sn-cell), #template-table tr.bom-child > td { background-color: #f8fafc; }
+#entry-table .bom-role { min-width: 150px; white-space: nowrap; }

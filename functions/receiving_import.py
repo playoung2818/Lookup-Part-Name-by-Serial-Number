@@ -2,6 +2,7 @@
 import math
 import hashlib
 import json
+import threading
 from datetime import date, datetime
 from io import BytesIO
 from zipfile import ZipFile, BadZipFile
@@ -15,6 +16,10 @@ COLUMNS = {
 }
 STRINGS = ('invoice_number', 'box_number', 'pod_number', 'part_number', 'serial_number')
 KEYS = tuple(COLUMNS.values())
+# Optional parent/child columns (nullable receiving_log.item_role,
+# ordering_model and parent_id). 'Parent Row' is the worksheet row of the parent.
+HIERARCHY = {'role': 'item_role', 'ordering model': 'ordering_model', 'parent row': 'parent_row'}
+ROLES = ('', 'parent', 'child')
 
 
 def clean(value):
@@ -47,6 +52,10 @@ def read_upload(content):
         if headers.count('reference') > 1:
             raise ValueError("Expected at most one 'Reference' column.")
         reference_position = headers.index('reference') if 'reference' in headers else None
+        for header in HIERARCHY:
+            if headers.count(header) > 1:
+                raise ValueError(f"Expected at most one '{header.title()}' column.")
+        hierarchy = {key: headers.index(header) for header, key in HIERARCHY.items() if header in headers}
         records, errors, skipped = [], [], 0
         for number, values in enumerate(rows, 2):
             if number > 20001:
@@ -57,6 +66,28 @@ def read_upload(content):
                 skipped += 1
                 continue
             problems = []
+            for key, index in hierarchy.items():
+                value = values[index] if index < len(values) else None
+                if key == 'parent_row':
+                    if clean(value) == '':
+                        row[key] = None
+                    else:
+                        try:
+                            row[key] = int(float(clean(value)))
+                        except ValueError:
+                            problems.append('Parent Row must be a worksheet row number')
+                else:
+                    row[key] = clean(value)
+                    if row[key].startswith('='):
+                        problems.append(f'{key} must not be a formula')
+                    if len(row[key]) > 255:
+                        problems.append(f'{key} exceeds 255 characters')
+            if 'item_role' in row:
+                row['item_role'] = row['item_role'].lower()
+                if row['item_role'] not in ROLES:
+                    problems.append('Role must be blank, parent or child')
+                elif row.get('parent_row') is not None and row['item_role'] != 'child':
+                    problems.append('Only child rows may have a Parent Row')
             if reference_position is not None:
                 reference = clean(values[reference_position] if reference_position < len(values) else None)
                 if reference.startswith('='):
@@ -96,6 +127,11 @@ def read_upload(content):
             else:
                 row['_row'] = number
                 records.append(row)
+        roles = {record['_row']: record.get('item_role') for record in records}
+        for record in records:
+            parent = record.get('parent_row')
+            if parent is not None and (parent >= record['_row'] or roles.get(parent) != 'parent'):
+                errors.append(f"Excel row {record['_row']}: Parent Row {parent} must be an earlier parent row")
         return records, errors, skipped
     finally:
         workbook.close()
@@ -140,6 +176,15 @@ def imported_equal(existing, uploaded):
 def import_data(row, table):
     data = {key: row[key] for key in KEYS}
     data['entry_date'] = date.fromisoformat(data['entry_date'])
+    for key in ('item_role', 'ordering_model'):
+        if key not in row:
+            continue
+        if key not in table.c:
+            if row[key]:
+                raise ValueError('receiving_log is missing the parent/child columns. Run '
+                                 'scripts/receiving_parent_child.sql (approved schema change); nothing saved.')
+            continue
+        data[key] = row[key] or None
     if 'Reference' in row:
         if 'Reference' not in table.c:
             raise ValueError('receiving_log is missing its existing Reference column; nothing saved.')
@@ -147,12 +192,39 @@ def import_data(row, table):
     return data
 
 
+_TABLE_CACHE = {}
+_TABLE_CACHE_LOCK = threading.Lock()
+
+
 def receiving_table(connection):
-    # Reflection intentionally requires an existing table; never creates schema.
-    table = Table('receiving_log', MetaData(), autoload_with=connection)
-    if not set(KEYS).issubset(table.c.keys()):
-        raise ValueError('receiving_log is missing required columns.')
+    """Reflect receiving_log once per database URL and process.
+
+    Reflection intentionally requires an existing table; never creates schema.
+    Restart the app after altering receiving_log columns, or call
+    clear_receiving_table_cache().
+    """
+    url = connection.engine.url
+    if url.get_backend_name() == 'sqlite' and url.database in (None, '', ':memory:'):
+        key = None  # each in-memory engine is a separate database
+    else:
+        key = url.render_as_string(hide_password=True)
+    table = _TABLE_CACHE.get(key) if key else None
+    if table is not None:
+        return table
+    with _TABLE_CACHE_LOCK:
+        table = _TABLE_CACHE.get(key)
+        if table is None:
+            table = Table('receiving_log', MetaData(), autoload_with=connection)
+            if not set(KEYS).issubset(table.c.keys()):
+                raise ValueError('receiving_log is missing required columns.')
+            if key:
+                _TABLE_CACHE[key] = table
     return table
+
+
+def clear_receiving_table_cache():
+    with _TABLE_CACHE_LOCK:
+        _TABLE_CACHE.clear()
 
 
 def classify(connection, table, records):
@@ -185,12 +257,29 @@ def classify(connection, table, records):
     return pending, errors, skipped
 
 
-def lock_receiving(connection):
+def lock_receiving(connection, serials=None):
+    """Serialize receiving writes.
+
+    Default (serials=None): table-wide SHARE ROW EXCLUSIVE lock for batch writes.
+
+    Row mode (serials is an iterable of serial keys, possibly empty): on
+    PostgreSQL take ROW EXCLUSIVE, which excludes the batch writers above but
+    lets concurrent single-row scans proceed, plus a transaction advisory lock
+    per nonblank serial key so two scans of the same SN cannot both pass the
+    duplicate check. Callers must still lock the target row (FOR UPDATE).
+    """
     if connection.dialect.name == 'sqlite':
         connection.exec_driver_sql('BEGIN IMMEDIATE')
     elif connection.dialect.name == 'postgresql':
         connection.execute(text("SET LOCAL lock_timeout = '10s'"))
-        connection.execute(text('LOCK TABLE receiving_log IN SHARE ROW EXCLUSIVE MODE'))
+        if serials is None:
+            connection.execute(text('LOCK TABLE receiving_log IN SHARE ROW EXCLUSIVE MODE'))
+            return
+        connection.execute(text('LOCK TABLE receiving_log IN ROW EXCLUSIVE MODE'))
+        # Sorted order prevents deadlocks between multi-key callers.
+        for key in sorted({serial_key(value) for value in serials} - {'', 'NA'}):
+            connection.execute(text("SELECT pg_advisory_xact_lock(hashtext('receiving_log.serial'), hashtext(:key))"),
+                               {'key': key})
     else:
         raise ValueError('Safe receiving imports require PostgreSQL or SQLite.')
 

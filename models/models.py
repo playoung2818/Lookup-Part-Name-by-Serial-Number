@@ -16,6 +16,11 @@ class ReceivingLog(db.Model):
     part_number   = db.Column(db.String(255))
     quantity      = db.Column(db.Float)
     reference      = db.Column('Reference', db.Text)
+    # Configured systems: 'parent' (QuickBooks item, e.g. SEMIL-1708-FF) or
+    # 'child' (included component, e.g. i7-9700E); NULL for ordinary rows.
+    item_role      = db.Column(db.String(10))
+    ordering_model = db.Column(db.String(255))  # parent's full ordering model
+    parent_id      = db.Column(db.Integer)      # child -> parent receiving_log.id
 
 
 class WarehouseBorrowLog(db.Model):

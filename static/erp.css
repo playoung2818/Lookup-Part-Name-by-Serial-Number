@@ -169,7 +169,7 @@ a { color: var(--accent); text-underline-offset: 3px; }
 /* Google-style homepage */
 body > main.home-page { min-height: 100vh; display: flex; }
 .home-search { flex: 1; display: flex; flex-direction: column; align-items: center; padding-top: 18vh; outline: 0; }
-.home-logo { width: 300px; height: auto; margin-bottom: 30px; }
+.home-logo { width: 300px; height: auto; margin-bottom: 30px; mix-blend-mode: multiply; }  /* JPEG white background blends into the page */
 .global-search-home { width: 100%; max-width: 720px; margin: 0; }
 .global-search-home .global-search-box { border-radius: 28px; padding: 5px 5px 5px 20px; box-shadow: 0 2px 8px #18243314; }
 .global-search-home .global-search-box input { height: 48px; font-size: 18px; }

@@ -28,7 +28,7 @@
 <header class="brand-header" id="workspace-content" tabindex="-1">
     <div><div class="page-eyebrow">WAREHOUSE / {{ 'RECEIVING' if receiving_mode else 'BORROWING' }}</div>
     <h1 class="page-title">{{ 'Receiving' if receiving_mode else 'New borrow entries' if entry_mode else 'Edit borrow record' if edit_mode else 'Warehouse Borrow Log' }}</h1>
-    <p class="page-description">{{ 'Upload, validate, and import receiving records without duplicate serials.' if receiving_mode else 'Enter one item per row. Save your entries together.' if entry_mode else 'Update item details and record returns.' if edit_mode else 'Track borrowed items, outstanding quantities, and returns.' }}</p></div>
+    <p class="page-description">{{ 'Enter one item per row. Save your entries together.' if entry_mode else 'Update item details and record returns.' if edit_mode else 'Track borrowed items, outstanding quantities, and returns.' }}</p></div>
     {% if borrow_mode and (entry_mode or edit_mode) %}<a class="btn btn-outline-secondary" href="{{ url_for('borrow_log.index') }}">← Back to log</a>{% endif %}
 </header>
 {% endif %}

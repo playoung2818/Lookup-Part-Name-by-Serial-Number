@@ -18,9 +18,62 @@ ALIASES = {
     'M.280-SSD-256GB-PCIe44-TLC5WT-TD2': 'M.280-SSD-256GB-P44-TLC5WT-TD2',
     'M.280-SSD-512GB-PCIe44-TLC5WT-TD2': 'M.280-SSD-512GB-P44-TLC5WT-TD2',
 }
+# Packing-list component names that differ from the QuickBooks item name.
+COMPONENT_ALIASES = {
+    'GC-AGXOrin64G-JetPack 6.2_NRU-230/240S': 'GC-Jetson-AGX64GB-Orin-Nvidia',
+    'E-mPCIeHS-BTWifi-WT-6218_Mod_Cbl-15CM': 'E-mPCIe-BTWifi-WT-6218_Mod_15CM',
+    'E-mPCIeHS-BTWifi-WT-6218_Mod_Cbl-40CM': 'E-mPCIe-BTWifi-WT-6218_Mod_40CM',
+    'mPCIe-M.2 Key B_LTE_Telit FN990A40_40cm': 'mPCIe-LTE_TelitFN990A40_40cm',
+}
 SKIP_PREFIXES = ('Cbl', 'DIN', 'AccsyBx', 'Gpubr', 'Ant', 'FK', 'TB', 'Screw', 'Wmkit', 'Dmpbr', 'DtC')
-ITEM_RE = re.compile(r'^(?:(?P<carton>\d+(?:-\d+)?)\s+)?(?P<model>.+?)\s+(?P<qty>\d+)\s+(?P<net>\d+\.\d+)(?:\s|$)')
+# Net weight may be printed without decimals (e.g. "10 13 14.45" = Qty 10, net 13 kg).
+ITEM_RE = re.compile(r'^(?:(?P<carton>\d+(?:-\d+)?)\s+)?(?P<model>.+?)\s+(?P<qty>\d+)\s+(?P<net>\d+(?:\.\d+)?)(?:\s|$)')
 POD_RE = re.compile(r'^Customer PO No\s*\.:\s*(POD-\d+)\s*$', re.I)
+INV_RE = re.compile(r'INV NO\.?\s*:\s*(\d+)')
+TOTAL_RE = re.compile(r'^TOTAL\s+(\d+)\s+CTNS(?:\s+(\d+)\s)?')
+BOM_RE = re.compile(r'^\s*(?P<base>[^,\s]+)\s*,\s*including\s*:?\s*(?P<parts>.+)$', re.I)
+MULTIPLIER_RE = re.compile(r'^(?P<count>\d+)\s*[xX]\s*(?P<name>.+)$')
+EXPORT_SN_RE = re.compile(r'^.+?\s+S/N\s*[:#]?\s*(?P<serial>\S+)\s*$', re.I)
+
+
+def part_key(value):
+    """Comparison key: case, spaces and the packing-list '*' marker ignored."""
+    return re.sub(r'[\s*]', '', str(value or '')).upper()
+
+
+def is_bulk(part):
+    return part.startswith(SKIP_PREFIXES)
+
+
+def description_text(lines):
+    """Join wrapped description lines; repair words split after a hyphen."""
+    text = ''
+    for line in lines:
+        text += line if text.endswith('-') or not text else ' ' + line
+    return re.sub(r'-\s+', '-', text).strip()
+
+
+def parse_bom(lines):
+    """'SEMIL-1708-FF, including i7-9700E, 2x DDR5-...' -> (base, [(part, count)]).
+
+    The base must be a single model token. Descriptive sentences such as
+    'front panel cable kit, including: ...' are not configured systems.
+    """
+    match = BOM_RE.match(description_text(lines))
+    if not match:
+        return None
+    components = []
+    for token in match['parts'].split(','):
+        token = token.strip().rstrip('.').strip()
+        if not token:
+            continue
+        multiplier = MULTIPLIER_RE.match(token)
+        count, name = (int(multiplier['count']), multiplier['name'].strip()) if multiplier else (1, token)
+        if count < 1 or count > 100:
+            raise ValueError(f'Unsupported component quantity in packing description: {token}')
+        name = ALIASES.get(name, name)
+        components.append((COMPONENT_ALIASES.get(name, name), count))
+    return (match['base'], components) if components else None
 
 
 def validate_excel(path):
@@ -43,12 +96,14 @@ def parse_packing(path):
         for page_number, page in enumerate(pdf.pages, 1):
             for raw in (page.extract_text() or '').splitlines():
                 line = raw.strip()
-                inv = re.search(r'INV NO\.:\s*(\d+)', line)
+                inv = INV_RE.search(line)
                 if inv:
                     invoices.add(inv.group(1))
-                total = re.match(r'^TOTAL\s+(\d+)\s+CTNS', line)
+                total = TOTAL_RE.match(line)
                 if total:
                     total_cartons = int(total.group(1))
+                    if total.group(2):  # "TOTAL 82 CTNS 731 654.7 942.36 KG" on one line
+                        printed_qty = int(total.group(2))
                     if current:
                         items.append(current)
                         current = None
@@ -95,7 +150,7 @@ def parse_packing(path):
 def read_serials(path, invoice):
     validate_excel(path)
     book = load_workbook(path, read_only=True, data_only=True)
-    pool, serials, seen = defaultdict(deque), [], set()
+    pool, serials, seen, duplicates = defaultdict(deque), [], {}, []
     try:
         rows = iter(book.worksheets[0].values)
         headers = [str(v or '').strip() for v in next(rows)]
@@ -112,17 +167,28 @@ def read_serials(path, invoice):
             if row['Invoice No'] != invoice:
                 raise ValueError(f'Serial export row {row_number}: invoice mismatch')
             serial = row['S/N']
+            # Some exports print "<MODEL> S/N Q4600813"; keep only the serial.
+            embedded = EXPORT_SN_RE.match(serial)
+            if embedded:
+                serial = embedded['serial']
             if not serial or not row['Customer PO No'] or not row['Ordering Model']:
                 raise ValueError(f'Serial export row {row_number}: incomplete allocation key')
+            allocation = (row['Customer PO No'], row['Ordering Model'])
             if serial.upper() in seen:
-                raise ValueError(f'Duplicate serial in export: {serial}')
-            seen.add(serial.upper())
+                # An exact repeat (same POD + model) is an export glitch: use it once.
+                # The same SN on a different POD/model is ambiguous: block.
+                if seen[serial.upper()] != allocation:
+                    raise ValueError(f'Duplicate serial in export: {serial} (row {row_number}) is listed for '
+                                     f'different POD/model combinations')
+                duplicates.append([row_number, *allocation, serial])
+                continue
+            seen[serial.upper()] = allocation
             model = ALIASES.get(row['Ordering Model'], row['Ordering Model'])
             pool[(row['Customer PO No'], model)].append(serial)
             serials.append([row_number, row['Customer PO No'], row['Ordering Model'], serial, row['Invoice No']])
     finally:
         book.close()
-    return pool, serials
+    return pool, serials, duplicates
 
 
 def read_references(path):
@@ -149,22 +215,65 @@ def read_references(path):
         book.close()
 
 
+def reconcile(receiving, qb_physical):
+    """Compare generated receiving quantities with QuickBooks physical lines.
+
+    Informational only: mismatches are reported for review, never auto-fixed.
+    Names that are a truncated prefix of each other (QuickBooks wraps long
+    item names) are paired when no exact match exists.
+    """
+    header = [['Part', 'Receiving Qty', 'QuickBooks Qty', 'Status']]
+    if not qb_physical:
+        return header
+    generated, received, names = Counter(), Counter(), {}
+    # QuickBooks sometimes drops a hyphen/underscore where it wraps a name.
+    loose = lambda value: re.sub(r'[-_]', '', part_key(value))
+    for row in receiving.iter_rows(min_row=2, values_only=True):
+        key = loose(row[4])
+        generated[key] += row[6]
+        names.setdefault(key, row[4])
+    for line in qb_physical:
+        key = loose(line['part'])
+        received[key] += line['qty']
+        names.setdefault(key, line['part'])
+    only_generated = sorted(set(generated) - set(received))
+    for qb_key in sorted(set(received) - set(generated)):
+        matches = [key for key in only_generated if min(len(key), len(qb_key)) >= 10
+                   and (key.startswith(qb_key) or qb_key.startswith(key))]
+        if len(matches) == 1:
+            generated[qb_key] += generated.pop(matches[0])
+            names[qb_key] = f'{names[matches[0]]} / QB {names[qb_key]}'
+            only_generated.remove(matches[0])
+    rows = header
+    for key in sorted(set(generated) | set(received), key=lambda key: names[key].upper()):
+        got, expected = generated.get(key, 0), received.get(key, 0)
+        status = ('OK' if got == expected else 'Not on QuickBooks receipt' if not expected
+                  else 'Not in packing list' if not got else 'Quantity differs')
+        rows.append([names[key], got, expected, status])
+    return rows
+
+
 def generate(receipt_path, packing_path, serial_path, output=None, reference_path=None):
     receipt = parse_receipt(receipt_path)
     packing, vendor_invoice, cartons, printed_qty = parse_packing(packing_path)
     # User explicitly selected this receipt/packing/export set. QB references
     # and vendor invoice numbers are different identifiers; preserve both.
     # Serial export invoice must still match the packing invoice exactly.
-    pool, serial_rows = read_serials(serial_path, vendor_invoice)
+    pool, serial_rows, duplicate_serials = read_serials(serial_path, vendor_invoice)
     references = read_references(reference_path)
+    qb_physical = [line for line in receipt['lines'] if line.get('kind', 'Physical item') == 'Physical item' and line['qty'] > 0]
+    qb_parts = {part_key(line['part']): line['part'] for line in qb_physical}
     book = Workbook()
     receiving = book.active
     receiving.title = 'Receiving Log'
-    receiving.append(['Date', 'Inv#', 'Box #', 'POD#', 'Part#', 'SN#', 'Qty', 'Reference'])
+    receiving.append(['Date', 'Inv#', 'Box #', 'POD#', 'Part#', 'SN#', 'Qty', 'Reference',
+                      'Role', 'Ordering Model', 'Parent Row'])
     audit = book.create_sheet('Row Audit')
     audit.append(['Receiving Excel Row', 'Packing Line', 'Page', 'POD', 'Part', 'Serial Status', 'Policy'])
     exceptions = [['Type', 'Packing Line', 'Part', 'Details']]
-    assigned = 0
+    for row_number, pod, model, serial in duplicate_serials:
+        exceptions.append(['Duplicate export row ignored', '', model, f'{pod}: {serial} (export row {row_number})'])
+    assigned, configured = 0, 0
     for item in packing:
         if not item['pod']:
             exceptions.append(['Missing POD - excluded', item['line'], item['part'],
@@ -172,18 +281,46 @@ def generate(receipt_path, packing_path, serial_path, output=None, reference_pat
             continue
         if reference_path and not references.get(item['pod']):
             exceptions.append(['Missing Reference', item['line'], item['part'], item['pod']])
-        expand = not item['part'].startswith(SKIP_PREFIXES)
+        expand = not is_bulk(item['part'])
+        reference = references.get(item['pod'], '')
+        # Configured system: packing "BASE, including A, 2x B" whose BASE is a
+        # QuickBooks item becomes a parent row (QB part) plus child component rows.
+        bom = parse_bom(item['description']) if expand else None
+        if bom and part_key(bom[0]) not in qb_parts:
+            bom = None
+        item['configured'] = bool(bom)
+        configured += bool(bom)
         for _ in range(item['qty'] if expand else 1):
             serial = pool[(item['pod'], item['part'])].popleft() if expand and pool[(item['pod'], item['part'])] else ''
             assigned += bool(serial)
+            status = 'Assigned from export' if serial else 'No export serial; blank cell'
+            if not bom:
+                append_literal(receiving, [receipt['date'], receipt['reference'], item['box'], item['pod'],
+                                           item['part'], serial, 1 if expand else item['qty'], reference, None, None, None])
+                append_literal(audit, [receiving.max_row, item['line'], item['page'], item['pod'], item['part'], status,
+                                       'Unit' if expand else 'Bulk accessory (notebook prefix policy)'])
+                continue
+            base = qb_parts[part_key(bom[0])]
             append_literal(receiving, [receipt['date'], receipt['reference'], item['box'], item['pod'],
-                                       item['part'], serial, 1 if expand else item['qty'], references.get(item['pod'], '')])
-            append_literal(audit, [receiving.max_row, item['line'], item['page'], item['pod'], item['part'],
-                                  'Assigned from export' if serial else 'No export serial; blank cell',
-                                  'Unit' if expand else 'Bulk accessory (notebook prefix policy)'])
+                                       base, serial, 1, reference, 'parent', item['part'], None])
+            parent_row = receiving.max_row
+            append_literal(audit, [parent_row, item['line'], item['page'], item['pod'], base, status,
+                                   f"Parent of configured {item['part']}"])
+            for component, count in bom[1]:
+                bulk = is_bulk(component)
+                for _ in range(1 if bulk else count):
+                    append_literal(receiving, [receipt['date'], receipt['reference'], item['box'], item['pod'],
+                                               component, '', count if bulk else 1, reference, 'child', None, parent_row])
+                    append_literal(audit, [receiving.max_row, item['line'], item['page'], item['pod'], component,
+                                           'Child component; SN scanned later',
+                                           f'Child of row {parent_row}' + (' (bulk quantity)' if bulk else '')])
     for (pod, part), remaining in pool.items():
         for serial in remaining:
             exceptions.append(['Unused serial', '', part, f'{pod}: {serial}'])
+    reconciliation = reconcile(receiving, qb_physical)
+    for part, generated, received, status in reconciliation[1:]:
+        if status != 'OK':
+            exceptions.append(['QB quantity mismatch', '', part, f'Receiving rows {generated}; QuickBooks {received}. {status}'])
     overview = book.create_sheet('Read Me', 1)
     summary = [
         ['Field', 'Value'], ['QuickBooks receipt / Inv#', receipt['reference']],
@@ -194,11 +331,13 @@ def generate(receipt_path, packing_path, serial_path, output=None, reference_pat
         ['Receiving rows', receiving.max_row - 1],
         ['Receiving quantity', sum(row[6] for row in receiving.iter_rows(min_row=2, values_only=True))],
         ['Serials assigned', assigned], ['Serial export rows', len(serial_rows)],
+        ['Configured systems (parent/child)', f'{configured} packing lines split into a parent row (QuickBooks item) plus one child row per included component per unit. Child SNs are scanned later.'],
+        ['QuickBooks reconciliation', f"{sum(r[3] != 'OK' for r in reconciliation[1:])} part(s) need review; see QB Reconciliation sheet." if qb_physical else 'Not performed: no QuickBooks physical lines.'],
         ['Excluded packing lines without POD', sum(not i['pod'] for i in packing)],
         ['Policy', 'Notebook accessory prefixes retain bulk quantities; all other items expand into Qty 1 rows. Missing export serials remain blank. The receiving workspace retains them and supports later SN entry and database updates.'],
         ['Cartons', 'Inherited across lines/pages until the next explicit carton. Carton ranges retained, not split into guessed individual cartons.'],
         ['Reference', f'Values from {reference_path.name}; first exact POD match, matching notebook VLOOKUP behavior.' if reference_path else 'Blank: POD-Reference.xlsx not supplied.'],
-        ['Source of receiving products', 'Packing models, as in notebook. QB component lines are retained separately, not also received (avoids double counting installed parts).'],
+        ['Source of receiving products', 'Packing models. A packing line described as "<QB item>, including <components>" is received as that QuickBooks parent item plus child component rows; other packing lines are received as their packing model.'],
         ['Reconciliation', 'Open PO price/bundle reconciliation NOT performed. No open PO data or invoice unit prices used.'],
         ['Excluded lines', 'All no-POD packing lines remain in Packing Lines and Exceptions for manual resolution.'],
         ['Database', 'No database accessed or modified. Review before importing.'],
@@ -210,7 +349,11 @@ def generate(receipt_path, packing_path, serial_path, output=None, reference_pat
     sheet.append(['Line', 'Page', 'Box #', 'POD#', 'Original Model', 'Normalized Part', 'Qty', 'Description', 'Status'])
     for item in packing:
         append_literal(sheet, [item['line'], item['page'], item['box'], item['pod'], item['original'], item['part'],
-                               item['qty'], '\n'.join(item['description']), 'Included' if item['pod'] else 'EXCLUDED - missing POD'])
+                               item['qty'], '\n'.join(item['description']),
+                               ('Included - parent/child' if item.get('configured') else 'Included') if item['pod'] else 'EXCLUDED - missing POD'])
+    sheet = book.create_sheet('QB Reconciliation')
+    for row in reconciliation:
+        append_literal(sheet, row)
     sheet = book.create_sheet('Serial Export')
     sheet.append(['Export Row', 'POD', 'Ordering Model', 'S/N', 'Vendor Invoice'])
     for row in serial_rows:

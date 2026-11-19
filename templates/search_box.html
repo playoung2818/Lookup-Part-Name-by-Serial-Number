@@ -4,7 +4,7 @@
     <div class="global-search-box">
         <svg class="global-search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input id="global-search-input" name="q" type="search" maxlength="255" required autocomplete="off" autocapitalize="off" spellcheck="false"
-               value="{{ search_value|default('') }}" placeholder="Scan or type a serial, SO or item number"
+               value="{{ search_value|default('') }}" placeholder="search SN#, SO or Item"
                role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="global-search-suggestions"
                aria-describedby="global-search-status" data-suggest-url="{{ url_for('inventory_count.item_suggest') }}"{% if search_autofocus %} data-autofocus{% endif %}>
         <kbd class="global-search-key" title="Press / to search">/</kbd>

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floor Map R7 · 3D Preview</title>
+<link rel="stylesheet" href="floor-map-3d.css">
+<script src="floor-map-3d.js?v=2" defer></script>
+</head>
+<body>
+<header><a class="brand" href="/" aria-label="Back to homepage"><span class="brand-icon">N</span> NEOUSYS <span class="brand-sub">WAREHOUSE OPERATIONS</span></a><span class="badge">DESIGN PREVIEW · R7</span></header>
+<main>
+<div class="heading"><div><p class="eyebrow">SPACE & OPERATIONS</p><h1>Your warehouse, in perspective.</h1><p class="intro">A 3D study of Floor Map R7 1. Explore the layout before it comes home.</p></div><a class="source-link" href="Floor%20Map%20R7%201.jpg" target="_blank" rel="noopener">Open original map ↗</a></div>
+<section class="workspace" aria-label="Interactive floor map">
+<div class="toolbar"><div class="tabs" role="group" aria-label="Map view"><button class="active" data-view="3d" aria-pressed="true">3D perspective</button><button data-view="top" aria-pressed="false">Top view</button><button data-view="original" aria-pressed="false">Original plan</button></div><div class="tools"><label><input id="labels" type="checkbox" checked> Labels</label><button id="reset">↺ Reset view</button></div></div>
+<div class="map-wrap" id="map-wrap"><div class="map-caption"><span class="live-dot"></span> NTA WAREHOUSE <span>/ LAYOUT R7</span></div><svg id="scene" role="img" aria-label="Interactive illustrative 3D warehouse floor plan" tabindex="0"></svg><img id="original" src="Floor%20Map%20R7%201.jpg" alt="Original Floor Map R7 1 warehouse layout" hidden><div class="map-hint" id="hint">Drag to move · Scroll to zoom · Select a zone to inspect</div><div class="compass" aria-hidden="true">↗<small>PLAN UP</small></div></div>
+<div class="view-controls"><label for="rotation">Rotation <input id="rotation" type="range" min="-180" max="180" value="-12"></label><label for="tilt">Elevation <input id="tilt" type="range" min="25" max="80" value="38"></label><div class="zoom-controls" role="group" aria-label="Map zoom"><button id="zoom-out" aria-label="Zoom out">−</button><label for="zoom">Zoom <input id="zoom" type="range" min="50" max="400" step="5" value="100"></label><output id="zoom-value" for="zoom">100%</output><button id="zoom-in" aria-label="Zoom in">+</button></div><span>Illustrative heights · Not to scale</span></div>
+</section>
+<div class="below"><section class="legend" aria-label="Zone legend"><p class="eyebrow">THE FLOOR AT A GLANCE</p><div id="legend-items"></div></section><aside id="detail" aria-live="polite"><span class="detail-icon">↗</span><div><h2>Explore your floor</h2><p>Select any fixture to see its location and purpose.</p></div></aside></div>
+<p class="note">Footprints follow the supplied drawing; fixture heights, rack levels, and colors are conceptual. No live inventory data is shown.</p>
+</main>
+</body></html>

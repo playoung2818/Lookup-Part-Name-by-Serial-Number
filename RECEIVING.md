@@ -76,7 +76,11 @@ The default template is `OneDrive - neousys-tech\Share NTA Warehouse\01 Incoming
 No new tables, indexes or constraints are created. The existing `receiving_log` must have unique non-null IDs. Blank serials remain blank, not automatically NA.
 
 - Draft updates are validated as a complete batch before replacing saved draft values. Stale template revisions are rejected.
-- Template commits acquire the existing PostgreSQL `SHARE ROW EXCLUSIVE` lock (10-second timeout), or SQLite `BEGIN IMMEDIATE`. The existing-invoice check happens under this lock.
+- Template commits acquire the existing PostgreSQL `SHARE ROW EXCLUSIVE` lock (10-second timeout), or SQLite `BEGIN IMMEDIATE`. The existing-invoice check happens under this lock. The commit reads only rows that can affect it (its bound IDs, its INV# and its serials), not the whole table.
+- Single-row scans/corrections (`POST /receiving/row`) use row-level locking on PostgreSQL: `ROW EXCLUSIVE` on the table (excludes batch writers, allows concurrent scans of other rows), `SELECT … FOR UPDATE` on the target row, and a transaction advisory lock per serial so two scans of the same SN cannot both pass the duplicate check. SQLite still uses `BEGIN IMMEDIATE`.
+- `POST /receiving/row` returns only the saved row plus workspace metadata (`{workspace, row}`), not the whole invoice. Use Refresh to see external changes to other rows.
+- The `receiving_log` structure is reflected once per process. Restart the app after altering its columns.
+- Lookup indexes from `scripts/receiving_lookup_indexes.sql` (`ix_receiving_log_serial_key`, `ix_receiving_log_invoice_number`) are applied to the production database.
 - A durable write-ahead journal bridges database commit and recording generated IDs. Retry an ambiguous save; do not regenerate. Refresh recovers a confirmed commit without reinsertion. Pending journals prevent replacement/editing.
 - `POST /receiving/row` accepts only workspace ID, row ID, SN and expected database-row version. The server resolves the row in the active workspace, verifies its current database invoice matches the fixed invoice scope, and updates only SN with an ID-and-invoice predicate.
 - Stale versions reject external changes rather than overwrite them. If a row moves to another invoice externally, it cannot be edited through the old selection. Deleted rows are not recreated.
@@ -94,7 +98,11 @@ No new tables, indexes or constraints are created. The existing `receiving_log` 
 - Configured reference lookup headers: `POD`, `Reference`; first exact POD match wins. Actual text is stored, not external formulas.
 - Prefixes `Cbl, DIN, AccsyBx, Gpubr, Ant, FK, TB, Screw, Wmkit, Dmpbr, DtC` retain bulk quantities; other products expand to Qty 1 rows. Three notebook SSD aliases apply.
 - Packing quantities/carton totals must reconcile. No-POD lines are excluded and reported, not assigned guessed PODs. Missing References and unused serials are reported.
-- Validate QuickBooks quantity × cost and totals. Component lines remain evidence, not additional physical receiving rows.
+- Validate QuickBooks quantity × cost and totals.
+- **Configured systems (parent/child).** A packing line described as `<QB item>, including <components>` (e.g. `SEMIL-1708-FF, including i7-9700E`) whose base is a QuickBooks item becomes, per unit: one **parent** row (Part# = QuickBooks item, SN from the export, `Ordering Model` = packing model such as `SEMIL-1708-i7OCG9-FF08-64`) followed by one **child** row per included component (`2x` = two Qty 1 rows; bulk prefixes such as `Cbl`/`DtC` keep one row with the quantity). Child SNs start blank and are scanned later. Descriptive kits (`... cable kit, including: ...`) and bases not on the receipt are not split. Packing/QuickBooks name differences are mapped in `COMPONENT_ALIASES`.
+- Stored in nullable `receiving_log` columns `item_role` (`parent`/`child`/NULL), `ordering_model` and `parent_id` (child → parent `id`), added by `scripts/receiving_parent_child.sql` (applied). Reload by INV#, refresh and Excel export (`Role`, `Ordering Model`, `Parent Row` columns) keep the links.
+- **QB Reconciliation** sheet: receiving quantities per part vs QuickBooks physical lines; differences appear as `QB quantity mismatch` exceptions for review (not blocking).
+- Packing layout tolerance: `INV NO:` with or without a period, totals printed on the `TOTAL ... CTNS` line, whole-number net weights. Serial exports may print `<MODEL> S/N <serial>`; exact repeated export rows are used once and reported, while one SN on different POD/model combinations still blocks generation.
 - Generated workbook exports retain source evidence; invoice-search exports contain current rows without original generation evidence.
 - Open PO price/bundle inference, purchase-order writes, shared-folder POD merging and server printing are not implemented.
 

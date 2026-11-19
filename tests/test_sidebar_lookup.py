@@ -133,6 +133,10 @@ class SearchAndSidebarTests(unittest.TestCase):
         response = self.client.get('/')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'global-search-home', response.data)
+        self.assertIn(b'aria-labelledby="floor-map-heading"', response.data)
+        self.assertIn(b'src="/static/floor-map-3d.html?embed=1"', response.data)
+        self.assertIn(b'Interactive 3D warehouse floor map', response.data)
+        self.assertIn(b'/static/home.css', response.data)
         self.assertNotIn(b'class="brand-header"', response.data)
         self.assertEqual(self.client.get('/serial-search').location, '/')
 

@@ -13,7 +13,7 @@ from werkzeug.utils import secure_filename
 
 from models.models import db
 from functions.receiving_workspace import (
-    WorkspaceConflict, WorkspaceStore, identifier, load_database, public_state,
+    WorkspaceConflict, WorkspaceStore, identifier, load_database, public_state, public_row, public_summary,
     save_database, save_row, fill_serials, update_template, search_invoice,
 )
 
@@ -249,8 +249,11 @@ def save_receiving_row():
             state = workspace.require(data['workspace_id'])
             save_row(db.engine, state, data['row_id'], data.get('serial_number'),
                      data['row_version'], workspace.persist)
-            result = database_state(workspace, state)
-        return jsonify(workspace=result)
+            # Return only the saved row: re-reading the whole invoice after every
+            # scan made large shipments slow. Refresh still reloads everything.
+            row = next(row for row in state['rows'] if row['row_id'] == data['row_id'])
+            result, saved = public_summary(state), public_row(row)
+        return jsonify(workspace=result, row=saved)
     except WorkspaceConflict as exc:
         return jsonify(error=str(exc)), 409
     except ValueError as exc:
