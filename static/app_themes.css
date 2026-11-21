@@ -1,0 +1,234 @@
+/* Page themes adapted from Hallmark (usehallmark.com, MIT): Furrow, Console, Wayfind.
+   Tokens are the themes' own values; the rules below map them onto the Receiving and
+   Warehouse Borrow Log pages. A page opts in with <html data-rt="..."> and
+   {% include 'theme_head.html' %}. Receiving has a theme switch; Borrow Log is Wayfind. */
+
+/* ---------- Theme tokens ---------- */
+html[data-rt="furrow"] {
+    color-scheme: light;
+    --t-paper: oklch(96% 0.011 85); --t-surface: oklch(99.5% 0.005 85); --t-surface-2: oklch(92% 0.016 85);
+    --t-ink: oklch(18% 0.006 60); --t-ink-2: oklch(28% 0.008 60); --t-muted: oklch(44% 0.012 60);
+    --t-rule: oklch(88% 0.013 85); --t-rule-strong: oklch(78% 0.015 70);
+    --t-accent: oklch(70% 0.19 40); --t-accent-hover: oklch(65% 0.19 40); --t-accent-ink: oklch(18% 0.006 60);
+    --t-accent-soft: oklch(91% 0.05 50); --t-focus: oklch(60% 0.19 40); --t-link: oklch(48% 0.15 40);
+    --t-ok: oklch(48% 0.11 150); --t-ok-soft: oklch(92% 0.04 150);
+    --t-warn: oklch(50% 0.13 55); --t-warn-soft: oklch(93% 0.05 70);
+    --t-bad: oklch(52% 0.19 27); --t-bad-soft: oklch(94% 0.03 27);
+    --t-input: oklch(99.5% 0.005 85); --t-sn: oklch(97.5% 0.02 60);
+    --t-font: "Red Hat Text", ui-sans-serif, system-ui, sans-serif;
+    --t-display: "Red Hat Display", "Red Hat Text", ui-sans-serif, sans-serif;
+    --t-mono: "Red Hat Mono", ui-monospace, Consolas, monospace;
+    --t-radius: 10px; --t-radius-control: 6px; --t-rule-w: 1px;
+    --t-shadow: 0 1px 2px oklch(18% 0.006 60 / 0.08), 0 14px 28px -16px oklch(18% 0.006 60 / 0.28);
+}
+html[data-rt="console"] {
+    color-scheme: dark;
+    --t-paper: oklch(17% 0.008 250); --t-surface: oklch(21% 0.009 250); --t-surface-2: oklch(13.5% 0.007 250);
+    --t-ink: oklch(95% 0.005 250); --t-ink-2: oklch(83% 0.008 250); --t-muted: oklch(71% 0.01 250);
+    --t-rule: oklch(31% 0.01 250); --t-rule-strong: oklch(42% 0.012 250);
+    --t-accent: oklch(82% 0.15 80); --t-accent-hover: oklch(88% 0.13 80); --t-accent-ink: oklch(18% 0.04 75);
+    --t-accent-soft: oklch(29% 0.05 80); --t-focus: oklch(82% 0.15 80); --t-link: oklch(77% 0.12 245);
+    --t-ok: oklch(76% 0.15 150); --t-ok-soft: oklch(24.5% 0.03 150);
+    --t-warn: oklch(82% 0.15 80); --t-warn-soft: oklch(29% 0.05 80);
+    --t-bad: oklch(70% 0.17 25); --t-bad-soft: oklch(24.5% 0.035 25);
+    --t-input: oklch(13.5% 0.007 250); --t-sn: oklch(19% 0.03 245);
+    --t-font: "Host Grotesk", ui-sans-serif, system-ui, sans-serif;
+    --t-display: var(--t-font);
+    --t-mono: "Atkinson Hyperlegible Mono", ui-monospace, Consolas, monospace;
+    --t-radius: 10px; --t-radius-control: 6px; --t-rule-w: 1px;
+    --t-shadow: none;
+}
+html[data-rt="wayfind"] {
+    color-scheme: light;
+    --t-paper: oklch(95.5% 0.006 250); --t-surface: oklch(99.5% 0.005 250); --t-surface-2: oklch(91% 0.009 250);
+    --t-ink: oklch(16% 0.014 262); --t-ink-2: oklch(29% 0.014 262); --t-muted: oklch(47% 0.016 260);
+    --t-rule: oklch(80% 0.011 250); --t-rule-strong: oklch(34% 0.014 262);
+    --t-accent: oklch(51% 0.22 264); --t-accent-hover: oklch(16% 0.014 262); --t-accent-ink: oklch(99.5% 0.003 250);
+    --t-accent-soft: oklch(93% 0.04 264); --t-focus: oklch(81% 0.16 82); --t-link: oklch(51% 0.22 264);
+    --t-ok: oklch(50% 0.12 150); --t-ok-soft: oklch(93% 0.04 150);
+    --t-warn: oklch(45% 0.1 75); --t-warn-soft: oklch(94% 0.08 85);
+    --t-bad: oklch(52% 0.19 27); --t-bad-soft: oklch(94% 0.03 27);
+    --t-input: oklch(99.5% 0.005 250); --t-sn: oklch(96.5% 0.02 264);
+    --t-font: "Chivo Mono", ui-monospace, Consolas, monospace;
+    --t-display: var(--t-font); --t-mono: var(--t-font);
+    --t-radius: 0; --t-radius-control: 0; --t-rule-w: 2px;
+    --t-shadow: 0 24px 40px -24px oklch(8% 0.01 260 / 0.35);
+}
+
+/* ---------- Page frame ---------- */
+html[data-rt] body.bg-light { background: var(--t-paper) !important; color: var(--t-ink); font-family: var(--t-font); }
+html[data-rt] { --ink: var(--t-ink); --muted: var(--t-muted); --line: var(--t-rule); --canvas: var(--t-paper); --accent: var(--t-accent); }
+html[data-rt] a { color: var(--t-link); }
+html[data-rt] :focus-visible { outline: 2px solid var(--t-focus); outline-offset: 2px; }
+html[data-rt="wayfind"] :focus-visible { outline-width: 3px; outline-offset: 3px; }
+html[data-rt] .text-muted, html[data-rt] .form-text { color: var(--t-muted) !important; }
+html[data-rt] .app-sidebar { background: var(--t-surface); border-right: var(--t-rule-w) solid var(--t-rule); }
+html[data-rt] .sidebar-brand, html[data-rt] .sidebar-footer { border-color: var(--t-rule); }
+html[data-rt] .sidebar-brand > span, html[data-rt] .nav-section-label, html[data-rt] .sidebar-footer,
+html[data-rt] .sidebar-footer span { color: var(--t-muted); }
+html[data-rt] .sidebar-nav a { color: var(--t-ink-2); border-radius: var(--t-radius-control); }
+html[data-rt] .sidebar-nav a:hover { background: var(--t-surface-2); color: var(--t-ink); }
+html[data-rt] .sidebar-nav a.active { background: var(--t-accent-soft); color: var(--t-ink); }
+html[data-rt] .sidebar-nav a.active svg, html[data-rt] .sidebar-nav .nav-receiving svg { color: var(--t-accent); }
+html[data-rt] .sidebar-nav .nav-borrow svg { color: var(--t-muted); }
+html[data-rt="console"] .sidebar-brand img { background: #fff; border-radius: 6px; padding: 6px 8px; }
+html[data-rt] .page-eyebrow { color: var(--t-muted); letter-spacing: .02em; }
+html[data-rt] .page-title { font-family: var(--t-display); color: var(--t-ink); font-weight: 600; font-size: 26px; letter-spacing: -0.03em; }
+html[data-rt="wayfind"] .page-title { font-weight: 700; }
+
+/* ---------- Cards and sections ---------- */
+html[data-rt] .card { background: var(--t-surface); color: var(--t-ink); border: var(--t-rule-w) solid var(--t-rule);
+    border-radius: var(--t-radius); box-shadow: var(--t-shadow); }
+html[data-rt] .card-header { background: var(--t-surface); color: var(--t-ink); border-bottom: 1px solid var(--t-rule); }
+html[data-rt] .card-header:first-child { border-radius: var(--t-radius) var(--t-radius) 0 0; }
+html[data-rt="wayfind"] .card { border-color: var(--t-rule-strong); }
+/* Wayfind headers: light sign panel + 2px ink rule (softer than a black slab). */
+html[data-rt="wayfind"] .card-header { background: var(--t-surface-2); color: var(--t-ink); border-bottom: var(--t-rule-w) solid var(--t-rule-strong); }
+html[data-rt] .card-body, html[data-rt] .border-top, html[data-rt] .border-bottom { border-color: var(--t-rule) !important; }
+html[data-rt] details > summary.card-header { cursor: pointer; }
+html[data-rt] .workspace-toolbar { background: var(--t-surface); box-shadow: 0 1px 0 var(--t-rule); }
+
+/* ---------- Controls ---------- */
+html[data-rt] .btn { font-family: var(--t-font); font-weight: 600; border-radius: var(--t-radius-control); }
+html[data-rt] .btn-primary { background: var(--t-accent); border-color: var(--t-accent); color: var(--t-accent-ink); }
+html[data-rt] .btn-primary:hover, html[data-rt] .btn-primary:focus { background: var(--t-accent-hover); border-color: var(--t-accent-hover); color: var(--t-accent-ink); }
+html[data-rt="wayfind"] .btn-primary:hover, html[data-rt="wayfind"] .btn-primary:focus { color: var(--t-surface); }
+html[data-rt] .btn-outline-primary, html[data-rt] .btn-outline-secondary {
+    background: var(--t-surface); color: var(--t-ink); border: var(--t-rule-w) solid var(--t-rule-strong); }
+html[data-rt] .btn-outline-primary:hover, html[data-rt] .btn-outline-secondary:hover { background: var(--t-surface-2); color: var(--t-ink); border-color: var(--t-ink-2); }
+html[data-rt="wayfind"] .btn-outline-primary:hover, html[data-rt="wayfind"] .btn-outline-secondary:hover { background: var(--t-ink); color: var(--t-surface); }
+html[data-rt] .btn-outline-success { background: transparent; color: var(--t-ok); border-color: color-mix(in oklab, var(--t-ok) 55%, transparent); }
+html[data-rt] .btn-outline-success:hover { background: var(--t-ok-soft); color: var(--t-ok); }
+html[data-rt] .btn:disabled { opacity: .55; }
+html[data-rt] .form-control, html[data-rt] .form-select {
+    background-color: var(--t-input); color: var(--t-ink); border: 1px solid var(--t-rule-strong); border-radius: var(--t-radius-control); font-family: var(--t-font); }
+html[data-rt] .form-control::placeholder { color: var(--t-muted); opacity: .8; }
+html[data-rt] .form-control:focus, html[data-rt] .form-select:focus { border-color: var(--t-focus); box-shadow: 0 0 0 3px color-mix(in oklab, var(--t-focus) 30%, transparent); }
+html[data-rt] .form-control:disabled, html[data-rt] .form-control[readonly] { background-color: var(--t-surface-2); }
+html[data-rt] .form-check-input { background-color: var(--t-input); border-color: var(--t-rule-strong); }
+html[data-rt] .form-check-input:checked { background-color: var(--t-accent); border-color: var(--t-accent); }
+html[data-rt] .form-label, html[data-rt] label { color: var(--t-ink-2); }
+html[data-rt] .font-monospace, html[data-rt] code { font-family: var(--t-mono) !important; }
+html[data-rt] code { color: var(--t-ink-2); }
+
+/* ---------- Alerts and status text ---------- */
+html[data-rt] .alert { border-radius: var(--t-radius-control); border: 1px solid; color: var(--t-ink); }
+html[data-rt] .alert-danger { background: var(--t-bad-soft); border-color: color-mix(in oklab, var(--t-bad) 40%, transparent); }
+html[data-rt] .alert-warning { background: var(--t-warn-soft); border-color: color-mix(in oklab, var(--t-warn) 40%, transparent); }
+html[data-rt] .alert-info, html[data-rt] .alert-secondary { background: var(--t-surface); border-color: var(--t-rule-strong); }
+html[data-rt] #entry-message.entry-error, html[data-rt] .serial-status.serial-error, html[data-rt] .text-danger { color: var(--t-bad) !important; }
+html[data-rt] #entry-message.entry-success, html[data-rt] .serial-status { color: var(--t-ok); }
+html[data-rt] .sequence-preview { background: var(--t-surface-2); border-radius: var(--t-radius-control); }
+
+/* ---------- Tables ---------- */
+html[data-rt] .table { --bs-table-bg: transparent; --bs-table-color: var(--t-ink); --bs-table-hover-bg: var(--t-surface-2);
+    color: var(--t-ink); border-color: var(--t-rule); }
+html[data-rt] .table > :not(caption) > * > * { border-color: var(--t-rule); }
+html[data-rt] #entry-table, html[data-rt] #template-table { font-variant-numeric: tabular-nums; }
+html[data-rt] #entry-table thead th, html[data-rt] #template-table thead th {
+    background: var(--t-surface-2); color: var(--t-ink-2); font-weight: 600; border-bottom: var(--t-rule-w) solid var(--t-rule-strong); }
+html[data-rt="wayfind"] #entry-table thead th, html[data-rt="wayfind"] #template-table thead th { background: var(--t-surface-2); color: var(--t-ink); }
+html[data-rt] #entry-table .row-number { color: var(--t-muted); }
+html[data-rt] #entry-table td[data-field="box_number"], html[data-rt] #entry-table td[data-field="pod_number"],
+html[data-rt] #entry-table .part-cell { font-family: var(--t-mono); font-size: .95em; }
+html[data-rt] #entry-table td[data-field="box_number"], html[data-rt] #entry-table td[data-field="pod_number"] { white-space: nowrap; }
+html[data-rt] #entry-table .sn-cell { background: var(--t-sn); }
+html[data-rt] #entry-table .sn-input { font-family: var(--t-mono); background: var(--t-input); color: var(--t-ink);
+    border-color: color-mix(in oklab, var(--t-accent) 45%, var(--t-rule)); }
+html[data-rt] #entry-table .sn-input:focus { border-color: var(--t-focus); box-shadow: 0 0 0 3px color-mix(in oklab, var(--t-focus) 30%, transparent); }
+html[data-rt] #entry-table .sn-input[readonly] { background: transparent; border-color: transparent; }
+html[data-rt] #entry-table .sn-input::placeholder { color: var(--t-muted); }
+html[data-rt] #entry-table tr:focus-within > td, html[data-rt] #entry-table tr:focus-within > th { background-color: var(--t-accent-soft); }
+html[data-rt] #entry-table tr.db-saved .row-save-status { color: var(--t-ok); }
+html[data-rt] #entry-table tr.db-pending .row-save-status { color: var(--t-warn); font-weight: 600; }
+html[data-rt] #entry-table tr.sn-duplicate .sn-input { border-color: var(--t-bad); background: var(--t-bad-soft); }
+html[data-rt] #entry-table tr.sn-duplicate .row-save-status { color: var(--t-bad); }
+html[data-rt] #template-table td.grid-selected, html[data-rt] #entry-table td.grid-selected {
+    background: var(--t-accent-soft) !important; box-shadow: inset 0 0 0 2px var(--t-accent); }
+html[data-rt] #template-table td.grid-selected input, html[data-rt] #entry-table td.grid-selected input { background-color: var(--t-surface); }
+/* Parent / child (configured systems) */
+html[data-rt] #entry-table tr.bom-parent > td, html[data-rt] #entry-table tr.bom-parent > th,
+html[data-rt] #template-table tr.bom-parent > td { border-top: var(--t-rule-w) solid var(--t-rule-strong); }
+html[data-rt] #entry-table tr.bom-child > td:not(.sn-cell), html[data-rt] #template-table tr.bom-child > td { background-color: color-mix(in oklab, var(--t-surface-2) 55%, transparent); }
+html[data-rt] #entry-table tr.bom-child .part-cell { color: var(--t-ink-2); }
+html[data-rt] .bom-role strong { color: var(--t-ink); }
+html[data-rt] .bom-role .text-muted { font-family: var(--t-mono); }
+
+/* ---------- Warehouse Borrow Log ---------- */
+html[data-rt] .borrow-sheet { background: var(--t-surface); border: var(--t-rule-w) solid var(--t-rule); border-radius: var(--t-radius); box-shadow: var(--t-shadow); }
+html[data-rt="wayfind"] .borrow-sheet { border-color: var(--t-rule-strong); }
+html[data-rt] .borrow-title { background: var(--t-surface); color: var(--t-ink); border-bottom: 1px solid var(--t-rule); padding: 12px 16px; }
+html[data-rt="wayfind"] .borrow-title { background: var(--t-surface-2); color: var(--t-ink); border-bottom: var(--t-rule-w) solid var(--t-rule-strong); }
+html[data-rt] .borrow-title h2 { font-family: var(--t-display); font-size: 15px; font-weight: 700; }
+html[data-rt] .borrow-title > span { color: var(--t-muted); }
+html[data-rt="wayfind"] .borrow-title > span { color: var(--t-muted); }
+html[data-rt] .borrow-summary h3, html[data-rt] .borrow-filters label { color: var(--t-ink-2); }
+html[data-rt] .borrow-summary strong { font-family: var(--t-mono); font-size: 15px; color: var(--t-accent-ink); background: var(--t-accent); padding: 2px 9px; border-radius: var(--t-radius-control); }
+html[data-rt] .borrow-filters > a { color: var(--t-link); }
+html[data-rt] .borrow-table-wrap { border-top: var(--t-rule-w) solid var(--t-rule); }
+html[data-rt] .borrow-table { font-family: var(--t-font); color: var(--t-ink); font-variant-numeric: tabular-nums; }
+html[data-rt] .borrow-table th { background: var(--t-surface-2); color: var(--t-ink-2); border-bottom: var(--t-rule-w) solid var(--t-rule-strong); }
+html[data-rt="wayfind"] .borrow-table th { background: var(--t-surface-2); color: var(--t-ink); }
+html[data-rt] .borrow-table th, html[data-rt] .borrow-table td { border-color: var(--t-rule); }
+html[data-rt] .borrow-table tbody tr, html[data-rt] .borrow-table tbody tr:nth-child(even) { background: var(--t-surface); }
+html[data-rt] .borrow-table tbody tr:hover { background: var(--t-accent-soft); }
+html[data-rt] .borrow-table:not(.batch-table) td:last-child { background: inherit; border-left-color: var(--t-rule); }
+html[data-rt] .borrow-table:not(.batch-table) th:last-child { border-left-color: var(--t-rule); }
+html[data-rt] .borrow-table a { color: var(--t-link); font-family: var(--t-mono); font-weight: 600; }
+html[data-rt] .borrow-table td:nth-child(3) { font-family: var(--t-mono); }
+/* Legend meanings kept: yellow = outstanding, orange = 31-60 days, red = over 60 days / ERROR. */
+html[data-rt] .borrow-table .qty-outstanding { background: oklch(92% 0.12 92); color: oklch(30% 0.06 85); font-weight: 600; }
+html[data-rt] .borrow-table .age-medium { background: oklch(92% 0.07 60); color: oklch(40% 0.11 55); }
+html[data-rt] .borrow-table .age-long { background: var(--t-bad-soft); color: var(--t-bad); font-weight: 700; }
+html[data-rt] .status-badge { border-radius: var(--t-radius-control); font-family: var(--t-font); }
+html[data-rt] .borrow-table .status-returned { background: var(--t-ok-soft); color: var(--t-ok); }
+html[data-rt] .borrow-table .status-partial-return { background: oklch(92% 0.12 92); color: oklch(30% 0.06 85); }
+html[data-rt] .borrow-table .status-borrowed { background: var(--t-accent-soft); color: var(--t-accent); }
+html[data-rt] .borrow-table .status-error { background: var(--t-bad-soft); color: var(--t-bad); }
+html[data-rt] .borrow-table caption, html[data-rt] .borrow-legend { color: var(--t-muted); }
+html[data-rt] .borrow-legend { border-top-color: var(--t-rule); }
+html[data-rt] .batch-table td { border-right-color: var(--t-rule); }
+html[data-rt] .batch-table .row-number { color: var(--t-muted); }
+html[data-rt] .batch-actions { background: var(--t-surface-2); border-top: var(--t-rule-w) solid var(--t-rule); }
+html[data-rt] #batch-status { color: var(--t-muted); }
+html[data-rt] .btn-outline-danger { background: var(--t-surface); color: var(--t-bad); border-color: color-mix(in oklab, var(--t-bad) 45%, transparent); }
+html[data-rt] .btn-outline-danger:hover { background: var(--t-bad-soft); color: var(--t-bad); }
+html[data-rt] .alert-success { background: var(--t-ok-soft); border-color: color-mix(in oklab, var(--t-ok) 40%, transparent); }
+
+/* ---------- Home (search + floor map) ---------- */
+html[data-rt] .home-panel { background: var(--t-surface); border: var(--t-rule-w) solid var(--t-rule); border-radius: var(--t-radius); box-shadow: var(--t-shadow); }
+html[data-rt="wayfind"] .home-panel { border-color: var(--t-rule-strong); }
+html[data-rt] .home-panel-title { background: var(--t-surface); border-bottom: 1px solid var(--t-rule); }
+html[data-rt="wayfind"] .home-panel-title { background: var(--t-surface-2); border-bottom: var(--t-rule-w) solid var(--t-rule-strong); }
+html[data-rt] .home-panel-title h2 { font-family: var(--t-display); color: var(--t-ink); }
+html[data-rt] .home-panel-title span, html[data-rt] .home-floor-map-note { color: var(--t-muted); }
+html[data-rt] .home-floor-map-note { border-top-color: var(--t-rule); }
+html[data-rt] .page-description { color: var(--t-muted); }
+html[data-rt] .global-search-box, html[data-rt] .global-search-home .global-search-box {
+    background: var(--t-input); border: 1px solid var(--t-rule-strong); border-radius: var(--t-radius-control); box-shadow: none; }
+/* Search box: no yellow focus ring; the border turns accent instead. */
+html[data-rt] .global-search-box:focus-within { border-color: var(--t-accent); box-shadow: none; }
+html[data-rt] .global-search-box input:focus, html[data-rt] .global-search-box input:focus-visible { outline: none; }
+html[data-rt] .global-search-box input { color: var(--t-ink); font-family: var(--t-font); }
+html[data-rt] .global-search-box input::placeholder, html[data-rt] .global-search-icon { color: var(--t-muted); }
+html[data-rt] .global-search-home .global-search-box .btn { border-radius: var(--t-radius-control); }
+html[data-rt] .global-search-key { font-family: var(--t-mono); color: var(--t-ink-2); background: var(--t-surface-2); border-color: var(--t-rule-strong); }
+html[data-rt] .global-search-meta { color: var(--t-muted); }
+html[data-rt] .global-search-suggestions, html[data-rt] .global-search-home .global-search-suggestions {
+    background: var(--t-surface); border-color: var(--t-rule-strong); border-radius: var(--t-radius-control); }
+html[data-rt] .suggestion { color: var(--t-ink); }
+html[data-rt] .suggestion:hover, html[data-rt] .suggestion[aria-selected="true"] { background: var(--t-accent-soft); color: var(--t-ink); }
+html[data-rt] .suggestions-heading { color: var(--t-muted); }
+
+/* ---------- Theme switch ---------- */
+.theme-switch { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0; border: 0; font-size: 12px; }
+.theme-switch legend { float: left; width: auto; margin: 0; padding: 0; font-size: 12px; color: var(--muted); }
+.theme-switch .options { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--t-surface, #fff); }
+.theme-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.theme-switch label { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; cursor: pointer; color: var(--muted); margin: 0; }
+.theme-switch label + input + label { border-left: 1px solid var(--line); }
+.theme-switch .swatch { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #0003; }
+.theme-switch input:checked + label { background: var(--t-surface-2, #eef2f6); color: var(--ink); font-weight: 600; }
+.theme-switch input:focus-visible + label { outline: 2px solid var(--t-focus, #206bc4); outline-offset: -2px; }
+html[data-rt="wayfind"] .theme-switch .options { border-radius: 0; border-color: var(--t-rule-strong); }
+@media print { .theme-switch { display: none; } }

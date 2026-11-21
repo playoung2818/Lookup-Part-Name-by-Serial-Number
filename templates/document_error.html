@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='Icon.ico') }}">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }} · Warehouse operations</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='erp.css') }}?v=7" rel="stylesheet">
+</head>
+<body class="bg-light">
+<main class="container py-4">
+    {% include 'brand_header.html' %}
+    <h1 class="h4" id="workspace-content" tabindex="-1">{{ title }}</h1>
+    <div class="alert alert-{{ 'warning' if status == 503 else 'secondary' }}" role="alert">
+        <p class="mb-2">{{ message }}</p>
+        {% if file_name %}<p class="mb-1"><strong>File:</strong> {{ file_name }}</p>{% endif %}
+        {% if location %}<p class="mb-0"><strong>Location:</strong> <code>{{ location }}</code></p>{% endif %}
+    </div>
+    {% if hint %}<p class="text-muted small">{{ hint }}</p>{% endif %}
+    <p><a href="javascript:history.back()">&larr; Back</a></p>
+</main>
+</body>
+</html>

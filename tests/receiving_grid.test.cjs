@@ -26,4 +26,13 @@ for (const value of ['=formula', 'NaN', 'line\nline', 'A'.repeat(256)]) assert.t
 for (const value of ['0', '-1', 'Infinity', '', 'bad']) assert.throws(() => validateValue(input('number'), value));
 for (const value of ['11/4/2026', '2026-02-30', '2026-13-01', '']) assert.throws(() => validateValue(input('date'), value));
 assert.throws(() => validateValue(input('text', 'part_number'), ''));
+const grid = require('../static/receiving_grid.js');
+assert.equal(grid.toTSV([['A', 'tab\there'], ['line\nbreak', 'say "hi"']]), 'A\t"tab\there"\r\n"line\nbreak"\t"say ""hi"""\r\n');
+assert.deepEqual(grid.parseTSV(grid.toTSV([['x\ty', '1'], ['', 'z']])), [['x\ty', '1'], ['', 'z']]);
+// Ctrl-click picks: unique cells in reading order; one rectangle keeps its shape.
+assert.deepEqual(grid.rangeCells([{anchor:{r:4,c:0},end:{r:4,c:0}}, {anchor:{r:1,c:0},end:{r:2,c:0}}, {anchor:{r:2,c:0},end:{r:2,c:0}}]),
+    [{r:1,c:0},{r:2,c:0},{r:4,c:0}]);
+const value = (r, c) => `R${r}C${c}`;
+assert.deepEqual(grid.selectionText([{anchor:{r:0,c:0},end:{r:1,c:1}}], value), {text: 'R0C0\tR0C1\r\nR1C0\tR1C1\r\n', count: 4});
+assert.deepEqual(grid.selectionText([{anchor:{r:3,c:0},end:{r:3,c:0}}, {anchor:{r:1,c:0},end:{r:1,c:0}}], value), {text: 'R1C0\r\nR3C0\r\n', count: 2});
 console.log('Receiving grid TSV parsing, rectangular selection, paste bounds and validation tests passed.');

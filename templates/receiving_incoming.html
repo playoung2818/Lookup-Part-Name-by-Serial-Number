@@ -1,14 +1,19 @@
-<section class="card mb-3" id="incoming-form-tool" aria-labelledby="incoming-form-heading">
-    <div class="card-header"><h2 class="h6 mb-0 fw-bold" id="incoming-form-heading">4. Generate incoming form</h2></div>
-    <div class="card-body">
-        <p class="small">Generate a Word incoming form from saved receiving records for an exact invoice number. No invoice needs to be loaded into the entry table. Records are grouped by box, product and POD, with quantities summed and distinct serials combined. This does not change the database.</p>
-        <form id="incoming-form" action="{{ url_for('receiving.generate_incoming_form') }}" method="post" enctype="multipart/form-data" class="row g-3">
-            <input type="hidden" name="csrf_token" value="{{ session.receiving_csrf }}">
-            <div class="col-md-4"><label for="incoming-invoice" class="form-label">Exact invoice number</label><input id="incoming-invoice" name="invoice_number" class="form-control" type="text" maxlength="255" placeholder="e.g. 8003593" required></div>
-            <div class="col-md-8"><label for="incoming-template" class="form-label">Word template (.docx, optional)</label><input id="incoming-template" name="template" type="file" accept=".docx" class="form-control"><div class="form-text">Leave empty to use OneDrive - neousys-tech\Share NTA Warehouse\01 Incoming\Incoming Form Template.docx relative to the current Windows user's home folder. Upload a template if the shared file is unavailable. The original template is never overwritten.</div></div>
-            <div class="col-12"><label class="form-check-label"><input name="inspection_passed" value="yes" type="checkbox" class="form-check-input"> I confirm inspection has passed; mark IQC and the receiving result PASS.</label><div class="form-text">Without confirmation the generated form says Pending. Generating a report does not perform an inspection.</div></div>
-            <div class="col-12"><button id="incoming-generate" type="submit" class="btn btn-primary">Generate incoming form (.docx)</button></div>
-        </form>
-        <p id="incoming-status" class="small mt-3 mb-0" role="status" aria-live="polite"></p>
+<dialog class="rcv-dialog card" id="incoming-dialog" aria-labelledby="incoming-form-heading">
+    <div id="incoming-form-tool">
+        <div class="card-header d-flex align-items-center justify-content-between gap-2">
+            <h2 class="h6 mb-0 fw-bold" id="incoming-form-heading">Generate incoming form</h2>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-close-dialog aria-label="Close">Close</button>
+        </div>
+        <div class="card-body">
+            <p class="small text-muted">Builds the Word incoming form for a saved INV#. Read-only; nothing is changed.</p>
+            <form id="incoming-form" action="{{ url_for('receiving.generate_incoming_form') }}" method="post" enctype="multipart/form-data" class="row g-3">
+                <input type="hidden" name="csrf_token" value="{{ session.receiving_csrf }}">
+                <div class="col-sm-5"><label for="incoming-invoice" class="form-label">INV#</label><input id="incoming-invoice" name="invoice_number" class="form-control" type="text" maxlength="255" placeholder="e.g. 8003593" required{% if shipment and shipment.mode != 'draft' %} value="{{ shipment.invoice_scope }}"{% endif %}></div>
+                <div class="col-sm-7"><label for="incoming-template" class="form-label" title="Default: OneDrive - neousys-tech\Share NTA Warehouse\01 Incoming\Incoming Form Template.docx. The template is never overwritten.">Word template (optional)</label><input id="incoming-template" name="template" type="file" accept=".docx" class="form-control"></div>
+                <div class="col-12"><label class="form-check-label" title="Unchecked, the form says Pending. Generating the form does not perform an inspection."><input name="inspection_passed" value="yes" type="checkbox" class="form-check-input"> Inspection passed — mark IQC PASS</label></div>
+                <div class="col-12"><button id="incoming-generate" type="submit" class="btn btn-primary">Download incoming form (.docx)</button></div>
+            </form>
+            <p id="incoming-status" class="small mt-3 mb-0" role="status" aria-live="polite"></p>
+        </div>
     </div>
-</section>
+</dialog>

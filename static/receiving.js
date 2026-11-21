@@ -38,7 +38,21 @@
         }
         return null;
     };
-    if (typeof module !== 'undefined' && module.exports) module.exports = {parseColumn, duplicateIds, nextBlankRow, canScanRow, validateSerialPaste};
+    // Rows -> table for the clipboard (Excel). Columns follow what the page shows.
+    const copyTable = (rows, {metadata = false, reference = true, header = true} = {}) => {
+        const role = row => row.item_role === 'parent' ? 'Parent' :
+            row.item_role === 'child' ? `Child of row ${row.parent_number ?? ''}`.trim() : '';
+        const columns = [
+            ...(metadata ? [['Date', row => row.entry_date], ['INV#', row => row.invoice_number]] : []),
+            ['Box', row => row.box_number], ['POD', row => row.pod_number], ['Part#', row => row.part_number],
+            ['Parent/Child', role], ['Ordering model', row => row.ordering_model],
+            ['Serial number', row => row.serial_number], ['Qty', row => row.quantity],
+            ...(reference ? [['Reference', row => row.Reference]] : []),
+        ];
+        const body = rows.map(row => columns.map(([, value]) => value(row) ?? ''));
+        return header ? [columns.map(([name]) => name), ...body] : body;
+    };
+    if (typeof module !== 'undefined' && module.exports) module.exports = {parseColumn, duplicateIds, nextBlankRow, canScanRow, validateSerialPaste, copyTable};
     if (typeof document === 'undefined') return;
     const initialize = document.getElementById('initialize-database');
     if (initialize) initialize.addEventListener('click', async () => {
@@ -72,7 +86,7 @@
     let queue = Promise.resolve(), inFlightId = null, cellGrid = null, visible = 0, countFrame = 0;
     const showMessage = (text, error = false) => {
         message.textContent = text;
-        message.className = `small mb-2 ${error ? 'entry-error' : 'entry-success'}`;
+        message.className = error ? 'entry-error' : 'entry-success';
     };
     // Incremental duplicate index: normalized SN -> IDs of rows currently holding it.
     const serialIndex = new Map(), keyById = new Map();
@@ -102,7 +116,12 @@
         countFrame = 0;
         let blanks = 0;
         for (const id of rowById.keys()) if (inputs.has(id) && !inputs.get(id).value.trim()) blanks++;
-        document.getElementById('entry-count').textContent = `${visible} / ${state.rows.length} database rows · ${blanks} blank SN · ${pending.size} waiting / error`;
+        const total = state.rows.length, filled = total - blanks;
+        document.getElementById('entry-count').textContent =
+            (visible === total ? `${total} rows` : `${visible} of ${total} rows`) + (pending.size ? ` · ${pending.size} unsaved` : '');
+        const progress = document.getElementById('entry-progress'), fill = document.getElementById('entry-progress-fill');
+        if (progress) progress.textContent = `${filled} / ${total} serials · ${blanks} blank`;
+        if (fill) fill.style.width = `${total ? Math.round(100 * filled / total) : 0}%`;
     };
     // Coalesce counter updates: a 2,000-row paste recounts once, not 2,000 times.
     const scheduleCount = () => {
@@ -122,18 +141,18 @@
         tr.classList.toggle('db-pending', dirty); tr.classList.toggle('db-saved', !dirty);
         tr.classList.toggle('sn-duplicate', duplicate);
         input.setAttribute('aria-invalid', duplicate || errors.has(id) ? 'true' : 'false');
-        status.textContent = duplicate ? 'Duplicate SN' :
-            errors.has(id) ? `Error · #${row.db_id}` : inFlightId === id ? `Saving · #${row.db_id}` :
-            dirty ? `Changed · #${row.db_id}` : `Saved · #${row.db_id}`;
-        status.title = errors.get(id) || '';
+        status.textContent = duplicate ? 'Duplicate' : errors.has(id) ? '⚠ Error' : inFlightId === id ? 'Saving…' :
+            dirty ? 'Changed' : `✓ #${row.db_id}`;
+        status.title = errors.get(id) || (dirty ? 'Not saved yet' : `Saved · database row #${row.db_id}`);
         const label = input.readOnly ? 'Correct' : 'Save';
-        button.textContent = label;
+        button.textContent = input.readOnly ? '✎' : 'Save';
+        button.title = label;
         button.setAttribute('aria-label', `${label} SN for database row ${row.db_id}`);
     };
     const renderRows = ids => { for (const id of ids) renderRow(id); scheduleCount(); };
     // Full pass over all rows: only for filter changes and the initial load.
     const refresh = () => {
-        if (cellGrid) cellGrid.clear();
+        if (cellGrid) cellGrid.clear(); clearRows();
         const query = search.value.trim().toUpperCase();
         visible = 0;
         for (const tr of tableRows) {
@@ -317,6 +336,78 @@
         invoiceSearch.elements.workspace_id.value = state.id;
         invoiceSearch.elements.revision.value = state.revision;
         invoiceSearch.submit();
+    });
+    // Row selection by row number (click, Shift-click for a range) and copying rows for Excel.
+    let rowAnchor = null, rowEnd = null, pendingCopy = null;
+    const visibleRows = () => tableRows.filter(tr => !tr.hidden && rowById.has(tr.dataset.rowId));
+    const selectedRows = () => {
+        if (!rowAnchor) return [];
+        const rows = visibleRows(), a = rows.indexOf(rowAnchor), b = rows.indexOf(rowEnd);
+        if (a < 0 || b < 0) return [];
+        return rows.slice(Math.min(a, b), Math.max(a, b) + 1);
+    };
+    const paintRows = () => {
+        const chosen = new Set(selectedRows());
+        for (const tr of tableRows) tr.classList.toggle('row-selected', chosen.has(tr));
+    };
+    const clearRows = () => { if (rowAnchor) { rowAnchor = rowEnd = null; paintRows(); } };
+    const rowsToText = (trs, header) => root.ReceivingGrid.toTSV(copyTable(trs.map(tr => {
+        const row = rowById.get(tr.dataset.rowId);
+        return {...row, serial_number: inputs.get(row.row_id).value.trim()};
+    }), {metadata: table.classList.contains('show-metadata'), reference: !table.classList.contains('no-reference'), header}));
+    table.addEventListener('click', event => {
+        const cell = event.target.closest('th.row-number');
+        if (!cell) return;
+        const tr = cell.closest('tr');
+        if (event.shiftKey && rowAnchor) rowEnd = tr; else rowAnchor = rowEnd = tr;
+        if (cellGrid) cellGrid.clear();
+        paintRows();
+        const count = selectedRows().length;
+        showMessage(`${count} row${count === 1 ? '' : 's'} selected · Ctrl+C or Copy rows to copy.`);
+    });
+    table.addEventListener('pointerdown', event => { if (event.target.closest('td')) clearRows(); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') clearRows(); });
+    document.addEventListener('copy', event => {
+        let text = pendingCopy;
+        if (text === null) {
+            const active = document.activeElement;
+            const textSelected = active && 'selectionStart' in active && active.selectionStart !== active.selectionEnd;
+            const rows = selectedRows();
+            if (!rows.length || textSelected) return;
+            text = rowsToText(rows, false);
+            showMessage(`${rows.length} row${rows.length === 1 ? '' : 's'} copied. Paste into Excel.`);
+        }
+        event.clipboardData.setData('text/plain', text);
+        event.preventDefault();
+    });
+    const copyNow = (text, done) => {
+        pendingCopy = text;
+        let copied = false;
+        try { copied = document.execCommand('copy'); } catch (_) { copied = false; }
+        pendingCopy = null;
+        showMessage(copied ? done : 'Copy is blocked by this browser. Select the cells and press Ctrl+C instead.', !copied);
+    };
+    // Copy serials: selected SN cells, else every non-blank serial shown (one per line).
+    // Rows selected by row number are copied whole, with headers.
+    document.getElementById('copy-serials').addEventListener('click', () => {
+        if (selectedRows().length) {
+            const rows = selectedRows();
+            copyNow(rowsToText(rows, true), `${rows.length} row${rows.length === 1 ? '' : 's'} copied with headers. Paste into Excel.`);
+        } else if (cellGrid && cellGrid.hasSelection()) {
+            const {text, count} = cellGrid.copyText();
+            copyNow(text, `${count} serial cell${count === 1 ? '' : 's'} copied. Paste into Excel.`);
+        } else {
+            const serials = visibleRows().map(tr => inputs.get(tr.dataset.rowId).value.trim()).filter(Boolean);
+            if (!serials.length) { showMessage('No serial numbers shown to copy.', true); return; }
+            copyNow(serials.join('\r\n') + '\r\n', `${serials.length} serial${serials.length === 1 ? '' : 's'} copied (blanks skipped). Paste into Excel.`);
+        }
+    });
+    // Click the "Serial number" header to select every SN cell shown.
+    table.querySelector('th.sn-heading').addEventListener('click', () => {
+        if (!cellGrid) return;
+        clearRows();
+        const count = cellGrid.selectColumn(0);
+        showMessage(`${count} serial cells selected · Ctrl+C to copy.`);
     });
     // Initial load: index all serials once, render every row once, then filter.
     for (const id of rowById.keys()) if (inputs.has(id)) indexSerial(id);

@@ -414,10 +414,13 @@ class ShipmentRouteTests(ShipmentTests):
         self.assertEqual([row['serial_number'] for row in self.engine.rows], ['ABC000127', 'ABC000128', ''])
         self.assertEqual(self.engine.rows[2]['quantity'], 3)
         page = self.client.get('/receiving')
-        self.assertIn(b'2. Fill consecutive serials', page.data)
-        self.assertIn(b'3. Reload entry by INV#', page.data)
-        self.assertLess(page.data.index(b'id="serial-tools"'), page.data.index(b'id="invoice-search-form"'))
+        self.assertIn(b'Fill consecutive serials', page.data)
+        # Header action bar: Open INV# comes first; tools are dialogs outside the entry table.
+        self.assertLess(page.data.index(b'id="invoice-search-form"'), page.data.index(b'id="serial-tools"'))
         self.assertLess(page.data.index(b'id="serial-tools"'), page.data.index(b'id="receiving-workspace"'))
+        self.assertIn(b'<dialog class="rcv-dialog card" id="serial-tools-dialog"', page.data)
+        self.assertIn(b'id="copy-serials"', page.data)
+        self.assertNotIn(b'Track borrowed items', page.data)
         self.assertIn(b'id="sequence-form"', page.data)
         self.assertNotIn(b'id="serial-group"', page.data)
         self.assertNotIn(b'id="serial-scan-form"', page.data)
@@ -426,12 +429,13 @@ class ShipmentRouteTests(ShipmentTests):
 
     def test_serial_generator_available_without_invoice(self):
         page = self.client.get('/receiving')
-        self.assertIn(b'2. Fill consecutive serials', page.data)
-        self.assertIn(b'3. Reload entry by INV#', page.data)
+        self.assertIn(b'Fill consecutive serials', page.data)
         self.assertIn(b'id="sequence-form"', page.data)
         self.assertIn(b'id="sequence-output"', page.data)
         self.assertNotIn(b'id="receiving-workspace"', page.data)
-        self.assertLess(page.data.index(b'id="serial-tools"'), page.data.index(b'id="invoice-search-form"'))
+        self.assertIn(b'class="rcv-empty"', page.data)
+        # Nothing loaded: the New shipment panel is shown (no hidden attribute).
+        self.assertRegex(page.data, rb'id="shipment-upload" aria-labelledby="shipment-upload-heading" >')
         self.assertEqual(self.engine.writes, 0)
 
     def test_upload_validation_and_no_table_creation(self):

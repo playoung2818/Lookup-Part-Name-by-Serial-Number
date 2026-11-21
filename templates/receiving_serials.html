@@ -1,19 +1,23 @@
-<section class="card mb-3" id="serial-tools" aria-labelledby="serial-tools-heading">
-    <div class="card-header"><h2 class="h6 mb-0 fw-bold" id="serial-tools-heading">2. Fill consecutive serials</h2></div>
-    <div class="serial-tools card-body">
-        <p class="small mb-3">Standalone serial-list tool. No invoice or table selection is required. This tool does not write to the database.</p>
-        <form id="sequence-form" class="row g-2 align-items-end">
-            <div class="col-12 col-md-7"><label for="sequence-first" class="form-label">First serial</label><input id="sequence-first" class="form-control" type="text" maxlength="255" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="e.g. SC69031431" required aria-describedby="sequence-help"></div>
-            <div class="col-5 col-md-2"><label for="sequence-count" class="form-label">Quantity</label><input id="sequence-count" class="form-control" type="number" min="1" max="20000" step="1" value="1" required></div>
-            <div class="col-7 col-md-3"><button id="sequence-generate" type="submit" class="btn btn-outline-primary w-100">Generate serials</button></div>
-        </form>
-        <p id="sequence-help" class="small text-muted mt-2 mb-0">Only the final digits increase; leading zeros stay intact. Generate up to 20,000 serials, then copy the list.</p>
-        <div id="sequence-result" class="sequence-preview mt-3" hidden>
-            <p id="sequence-summary" class="mb-2"></p>
-            <label for="sequence-output" class="form-label">Generated serials — one per line</label>
-            <textarea id="sequence-output" class="form-control font-monospace mb-2" rows="8" readonly spellcheck="false"></textarea>
-            <button id="sequence-copy" type="button" class="btn btn-primary" disabled>Copy serial list</button>
+<dialog class="rcv-dialog card" id="serial-tools-dialog" aria-labelledby="serial-tools-heading">
+    <div id="serial-tools">
+        <div class="card-header d-flex align-items-center justify-content-between gap-2">
+            <h2 class="h6 mb-0 fw-bold" id="serial-tools-heading">Fill consecutive serials</h2>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-close-dialog aria-label="Close">Close</button>
         </div>
-        <p id="serial-status" class="serial-status small mt-3 mb-0" role="status" aria-live="polite">Enter the first serial and quantity, then generate. No invoice is required.</p>
+        <div class="serial-tools card-body">
+            <form id="sequence-form" class="row g-2 align-items-end">
+                <div class="col-12 col-sm-7"><label for="sequence-first" class="form-label">First serial</label><input id="sequence-first" class="form-control" type="text" maxlength="255" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="e.g. SC69031431" required aria-describedby="sequence-help"></div>
+                <div class="col-5 col-sm-2"><label for="sequence-count" class="form-label">Qty</label><input id="sequence-count" class="form-control" type="number" min="1" max="20000" step="1" value="1" required></div>
+                <div class="col-7 col-sm-3"><button id="sequence-generate" type="submit" class="btn btn-primary w-100">Generate</button></div>
+            </form>
+            <p id="sequence-help" class="small text-muted mt-2 mb-0">The last digits count up, zeros kept. Copy the list, then paste it into selected SN cells. Nothing is saved here.</p>
+            <div id="sequence-result" class="sequence-preview mt-3" hidden>
+                <p id="sequence-summary" class="mb-2"></p>
+                <label for="sequence-output" class="visually-hidden">Generated serials, one per line</label>
+                <textarea id="sequence-output" class="form-control font-monospace mb-2" rows="8" readonly spellcheck="false"></textarea>
+                <button id="sequence-copy" type="button" class="btn btn-outline-primary" disabled>Copy list</button>
+            </div>
+            <p id="serial-status" class="serial-status small mt-2 mb-0" role="status" aria-live="polite"></p>
+        </div>
     </div>
-</section>
+</dialog>

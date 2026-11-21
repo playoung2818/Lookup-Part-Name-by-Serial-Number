@@ -99,7 +99,7 @@ class IncomingRouteTests(unittest.TestCase):
         self.app.instance_path = self.temp.name
         self.client = self.app.test_client()
         page = self.client.get('/receiving')
-        self.assertIn(b'4. Generate incoming form', page.data)
+        self.assertIn(b'Generate incoming form', page.data)
         with self.client.session_transaction() as session:
             self.csrf = session['receiving_csrf']
         self.reader = patch('functions.incoming_form.invoice_records', return_value=[row(1)])

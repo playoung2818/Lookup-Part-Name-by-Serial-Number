@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-rt="wayfind">
 <head>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='Icon.ico') }}">
     <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,6 +8,7 @@
     <link href="{{ url_for('static', filename='search_results.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='borrow_log.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='erp.css') }}?v=7" rel="stylesheet">
+    {% include 'theme_head.html' %}
 </head>
 <body class="bg-light">
 <main class="container-fluid py-4 borrow-page">

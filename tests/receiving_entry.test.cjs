@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { parseColumn, duplicateIds, nextBlankRow, canScanRow, validateSerialPaste } = require('../static/receiving.js');
+const { parseColumn, duplicateIds, nextBlankRow, canScanRow, validateSerialPaste, copyTable } = require('../static/receiving.js');
 assert.deepEqual(parseColumn('SN-1\r\nSN-2\r\n'), ['SN-1', 'SN-2']);
 assert.deepEqual(parseColumn(' SN-1 \n\nSN-3'), ['SN-1', '', 'SN-3']);
 assert.throws(() => parseColumn('SN-1\tPART'), /one SN column/);
@@ -36,4 +36,11 @@ assert.throws(() => validateSerialPaste(pastedRows, [{row_id:'2',serial_number:'
 assert.throws(() => validateSerialPaste(pastedRows, [{row_id:'2',serial_number:'SAME'}, {row_id:'3',serial_number:'same'}]), /duplicate/);
 assert.doesNotThrow(() => validateSerialPaste(pastedRows, [{row_id:'2',serial_number:'NEW1'}, {row_id:'3',serial_number:'NEW2'}]));
 assert.doesNotThrow(() => validateSerialPaste(pastedRows, [{row_id:'2',serial_number:'NA'}, {row_id:'3',serial_number:'NA'}]));
+const parent = {box_number:'82--57-72', pod_number:'POD-261225', part_number:'SEMIL-1708-FF', item_role:'parent', ordering_model:'SEMIL-1708-i7OCG9-FF08-64', serial_number:'Q4600813', quantity:1, Reference:'', entry_date:'2026-11-19', invoice_number:'8003757'};
+const child = {...parent, part_number:'i7-9700E', item_role:'child', ordering_model:'', parent_number:634, serial_number:''};
+assert.deepEqual(copyTable([parent, child], {reference:false}), [
+    ['Box','POD','Part#','Parent/Child','Ordering model','Serial number','Qty'],
+    ['82--57-72','POD-261225','SEMIL-1708-FF','Parent','SEMIL-1708-i7OCG9-FF08-64','Q4600813',1],
+    ['82--57-72','POD-261225','i7-9700E','Child of row 634','','',1]]);
+assert.deepEqual(copyTable([parent], {metadata:true, header:false})[0].slice(0, 3), ['2026-11-19', '8003757', '82--57-72']);
 console.log('Receiving entry validation, range paste duplicate checks, blank scan eligibility and Enter navigation tests passed.');

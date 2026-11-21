@@ -19,7 +19,7 @@ Draft cells are not autosaved. Save before leaving. Switching transactions warns
 
 ## 2. Fill consecutive serials — standalone tool
 
-This always-expanded tool is available before loading an invoice, during draft review, or while viewing saved records. It does not select table rows, call the database, or save serials into records.
+This tool (collapsed by default; click its header to open) is available before loading an invoice, during draft review, or while viewing saved records. It does not select table rows, call the database, or save serials into records.
 
 1. Enter the first serial and quantity (1–20,000).
 2. Select **Generate serials**.

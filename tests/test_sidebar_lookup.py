@@ -159,7 +159,12 @@ class SearchAndSidebarTests(unittest.TestCase):
                 html = render_template('brand_header.html', serial_number='X', query='Y')
                 self.assertNotIn('role="search"', html)
                 self.assertNotIn('global-search-input', html)
-                self.assertIn('class="brand-header"', html)  # page title still shown
+                if path == '/receiving':
+                    # Receiving renders its own header with the action bar.
+                    self.assertNotIn('class="brand-header"', html)
+                    self.assertIn('class="rcv-header"', self.client.get(path).get_data(as_text=True))
+                else:
+                    self.assertIn('class="brand-header"', html)  # page title still shown
                 self.assertIn('>WAREHOUSE ACTIONS</div>', html)
 
     def test_sidebar_has_only_warehouse_actions(self):

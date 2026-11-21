@@ -48,8 +48,45 @@
         }
         return edits;
     };
+    // Excel-compatible TSV: quote cells containing tabs, line breaks or quotes.
+    const toTSV = matrix => matrix.map(row => row.map(value => {
+        const text = value == null ? '' : String(value);
+        return /[\t\r\n"]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    }).join('\t')).join('\r\n') + '\r\n';
+    const cellText = cell => {
+        const input = cell.querySelector('input, select, textarea');
+        return (input ? input.value : cell.textContent).trim();
+    };
+    // Positions covered by a list of {anchor, end} ranges: unique, in reading order.
+    const rangeCells = ranges => {
+        const seen = new Set(), cells = [];
+        for (const range of ranges) {
+            const top = Math.min(range.anchor.r, range.end.r), bottom = Math.max(range.anchor.r, range.end.r);
+            const left = Math.min(range.anchor.c, range.end.c), right = Math.max(range.anchor.c, range.end.c);
+            for (let r = top; r <= bottom; r++) for (let c = left; c <= right; c++) {
+                const key = `${r}:${c}`;
+                if (!seen.has(key)) { seen.add(key); cells.push({r, c}); }
+            }
+        }
+        return cells.sort((a, b) => a.r - b.r || a.c - b.c);
+    };
+    // Clipboard text for selected cells: one rectangle keeps its shape; Ctrl-click picks become a column.
+    const selectionText = (ranges, valueAt) => {
+        if (ranges.length === 1) {
+            const [range] = ranges;
+            const top = Math.min(range.anchor.r, range.end.r), bottom = Math.max(range.anchor.r, range.end.r);
+            const left = Math.min(range.anchor.c, range.end.c), right = Math.max(range.anchor.c, range.end.c);
+            const matrix = [];
+            for (let r = top; r <= bottom; r++) { const row = []; for (let c = left; c <= right; c++) row.push(valueAt(r, c)); matrix.push(row); }
+            return {text: toTSV(matrix), count: matrix.length * matrix[0].length};
+        }
+        const cells = rangeCells(ranges);
+        return {text: toTSV(cells.map(({r, c}) => [valueAt(r, c)])), count: cells.length};
+    };
     const attach = ({table, getRows, onMessage, validate, canEdit, applyPaste}) => {
-        let selection = null, dragging = false;
+        // `selection` is the range being extended; `extra` holds earlier Ctrl-click / Ctrl-drag ranges.
+        let selection = null, extra = [], dragging = false;
+        const ranges = () => [...extra, ...(selection ? [selection] : [])];
         const locate = target => {
             const td = target.closest('td');
             if (!td || !table.contains(td)) return null;
@@ -62,18 +99,28 @@
         };
         const paint = () => {
             table.querySelectorAll('.grid-selected').forEach(cell => cell.classList.remove('grid-selected'));
-            if (!selection) return;
+            if (!selection && !extra.length) return;
             const rows = getRows();
-            const top = Math.min(selection.anchor.r, selection.end.r), bottom = Math.max(selection.anchor.r, selection.end.r);
-            const left = Math.min(selection.anchor.c, selection.end.c), right = Math.max(selection.anchor.c, selection.end.c);
-            for (let r = top; r <= bottom; r++) for (let c = left; c <= right; c++) rows[r]?.[c]?.classList.add('grid-selected');
+            for (const {r, c} of rangeCells(ranges())) rows[r]?.[c]?.classList.add('grid-selected');
         };
+        const same = (a, b) => a.r === b.r && a.c === b.c;
         table.addEventListener('pointerdown', event => {
             if (event.button !== 0) return;
             const position = locate(event.target);
             if (!position) return;
             if (event.shiftKey && selection) { selection.end = position; event.preventDefault(); }
-            else selection = {anchor: position, end: position};
+            else if (event.ctrlKey || event.metaKey) {
+                // Ctrl-click a selected single cell to drop it; otherwise add a new range.
+                const all = ranges(), index = all.findIndex(range => same(range.anchor, range.end) && same(range.anchor, position));
+                if (index >= 0) {
+                    all.splice(index, 1);
+                    selection = all.pop() || null; extra = all;
+                    paint(); event.preventDefault(); return;
+                }
+                if (selection) extra.push(selection);
+                selection = {anchor: position, end: position};
+                event.preventDefault();
+            } else { extra = []; selection = {anchor: position, end: position}; }
             dragging = true; paint();
         });
         table.addEventListener('pointerover', event => {
@@ -87,12 +134,12 @@
         root.addEventListener('pointerup', () => { dragging = false; });
         table.addEventListener('focusin', event => {
             const position = locate(event.target);
-            if (position && !dragging) { selection = {anchor: position, end: position}; paint(); }
+            if (position && !dragging) { extra = []; selection = {anchor: position, end: position}; paint(); }
         });
         table.addEventListener('keydown', event => {
             const position = locate(event.target);
             if (!position) return;
-            if (event.key === 'Escape') { selection = null; paint(); return; }
+            if (event.key === 'Escape') { selection = null; extra = []; paint(); return; }
             if (!event.shiftKey || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
             event.preventDefault(); event.stopImmediatePropagation();
             if (!selection) selection = {anchor: position, end: position};
@@ -108,7 +155,16 @@
             try {
                 const rows = getRows();
                 const matrix = parseTSV(event.clipboardData.getData('text/plain'));
-                const edits = planPaste(matrix, selection || {anchor: position, end: position}, rows.length, rows[0].length);
+                let edits;
+                if (extra.length) {
+                    // Ctrl-click picks: one value fills them all, or a one-column list fills them in order.
+                    const cells = rangeCells(ranges());
+                    const single = matrix.length === 1 && matrix[0].length === 1;
+                    if (!single && (matrix[0].length !== 1 || matrix.length !== cells.length)) {
+                        throw Error(`Copy one value, or a one-column list of exactly ${cells.length} values, for the ${cells.length} selected cells. Nothing was pasted.`);
+                    }
+                    edits = cells.map((cell, index) => ({...cell, value: single ? matrix[0][0] : matrix[index][0]}));
+                } else edits = planPaste(matrix, selection || {anchor: position, end: position}, rows.length, rows[0].length);
                 // Validate every destination BEFORE touching any cell or dispatching autosaves.
                 const prepared = edits.map(edit => {
                     const input = rows[edit.r][edit.c].querySelector('input');
@@ -121,11 +177,38 @@
                     for (const {input, value} of prepared) input.value = value;
                     for (const {input} of prepared) input.dispatchEvent(new Event('input', {bubbles: true}));
                 }
-                selection = {anchor: {r: edits[0].r, c: edits[0].c}, end: {r: edits.at(-1).r, c: edits.at(-1).c}};
+                if (!extra.length) selection = {anchor: {r: edits[0].r, c: edits[0].c}, end: {r: edits.at(-1).r, c: edits.at(-1).c}};
                 paint(); onMessage(`${prepared.length} cells pasted. ${table.id === 'template-table' ? 'Review and save draft changes.' : 'Serial numbers are saving individually.'}`);
             } catch (error) { onMessage(error.message, true); }
         }, true);
-        return {clear: () => { selection = null; paint(); }};
+        // Ctrl+C copies the selected cells (one cell, a block, or Ctrl-click picks). If you have
+        // highlighted part of a value inside a cell, the browser's own copy is used instead.
+        let active = false;
+        document.addEventListener('pointerdown', event => { active = table.contains(event.target); }, true);
+        const copyText = () => {
+            if (!selection && !extra.length) return null;
+            const rows = getRows();
+            return selectionText(ranges(), (r, c) => rows[r]?.[c] ? cellText(rows[r][c]) : '');
+        };
+        document.addEventListener('copy', event => {
+            if ((!selection && !extra.length) || !(active || table.contains(document.activeElement))) return;
+            const focused = document.activeElement;
+            const partial = focused && table.contains(focused) && 'selectionStart' in focused &&
+                focused.selectionStart !== focused.selectionEnd && !(focused.selectionStart === 0 && focused.selectionEnd === focused.value.length);
+            if (partial && !extra.length && same(selection.anchor, selection.end)) return;
+            const {text, count} = copyText();
+            event.clipboardData.setData('text/plain', text);
+            event.preventDefault();
+            onMessage(`${count} cell${count === 1 ? '' : 's'} copied. Paste into Excel or another selection.`);
+        });
+        const selectColumn = c => {
+            const rows = getRows();
+            if (!rows.length) return 0;
+            extra = []; selection = {anchor: {r: 0, c}, end: {r: rows.length - 1, c}}; active = true; paint();
+            return rows.length;
+        };
+        return {clear: () => { selection = null; extra = []; paint(); }, hasSelection: () => Boolean(selection || extra.length),
+                copyText, selectColumn, count: () => rangeCells(ranges()).length};
     };
     const validateValue = (input, raw) => {
         const value = raw.trim();
@@ -144,6 +227,6 @@
         if (input.dataset.field === 'part_number' && !value) throw Error('Part# cannot be blank. Nothing was pasted.');
         return value;
     };
-    root.ReceivingGrid = {parseTSV, planPaste, attach, validateValue};
+    root.ReceivingGrid = {parseTSV, planPaste, attach, validateValue, toTSV, rangeCells, selectionText};
     if (typeof module !== 'undefined' && module.exports) module.exports = root.ReceivingGrid;
 })(globalThis);

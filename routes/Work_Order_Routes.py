@@ -115,17 +115,77 @@ def index():
                            workflow=workflow, workflow_error=workflow_error)
 
 
+SHARE_ERRORS = {5: "access is denied", 53: "the network path was not found",
+                67: "the network name was not found", 1326: "the sign-in was rejected",
+                1219: "conflicting credentials are already in use"}
+
+
+def share_root(path):
+    """'\\\\server\\share\\a\\b.pdf' -> '\\\\server\\share'; None for local paths."""
+    drive = os.path.splitdrive(path)[0]
+    return drive if drive.startswith(("\\\\", "//")) else None
+
+
+def unavailable_reason(path):
+    """Why a file cannot be served: None, 'share', 'folder' or 'file', plus detail."""
+    if os.path.isfile(path):
+        return None, ""
+    root = share_root(path)
+    if root:
+        try:
+            os.listdir(root)
+        except OSError as exc:
+            code = getattr(exc, "winerror", None) or exc.errno
+            return "share", SHARE_ERRORS.get(code, exc.strerror or str(exc))
+    if not os.path.isdir(os.path.dirname(path)):
+        return "folder", "folder not found"
+    return "file", "file not found in folder"
+
+
+def document_error(status, title, message, path=None, hint=None):
+    response = render_template("document_error.html", status=status, title=title, message=message, hint=hint,
+                               file_name=os.path.basename(path) if path else None,
+                               location=os.path.dirname(path) if path else None)
+    return response, status, {"Cache-Control": "no-store"}
+
+
+def unavailable_response(path, label):
+    reason, detail = unavailable_reason(path)
+    current_app.logger.warning("%s unavailable (%s: %s): %s", label, reason, detail, path)
+    if reason == "share":
+        return document_error(
+            503, "File share unavailable",
+            f"The web server cannot open the network share {share_root(path)} ({detail}). "
+            "The document record exists; the file itself could not be reached.", path,
+            "The web app must run under a Windows sign-in that has access to this share "
+            "(see scripts/install_startup_task.ps1). Ask the administrator to check the server; retry afterwards.")
+    if reason == "folder":
+        return document_error(503, "Document folder unavailable",
+                              "The folder recorded for this document is not reachable from the web server.", path,
+                              "The folder may have been renamed or moved, or a mapped drive may be disconnected.")
+    return document_error(404, "Document file not found",
+                          "The document record exists, but the file is no longer in its folder. "
+                          "It may have been renamed, moved or deleted.", path)
+
+
 @work_orders_bp.get("/document/<kind>/<int:record_id>")
 def document(kind, record_id):
     table = {"pdf": "pdf_file_log"}.get(kind)
     if not table:
         abort(404)
-    with db.engine.connect() as connection:
-        path = connection.execute(text(f"SELECT file_path FROM {table} WHERE id = :id"), {"id": record_id}).scalar()
-    if not path or not os.path.isfile(path):
-        abort(404)
+    try:
+        with db.engine.connect() as connection:
+            path = connection.execute(text(f"SELECT file_path FROM {table} WHERE id = :id"), {"id": record_id}).scalar()
+    except Exception:
+        current_app.logger.exception("Document record lookup failed: %s #%s", table, record_id)
+        return document_error(503, "Document lookup unavailable",
+                              "The document list could not be read from the database. Retry shortly.")
+    if not path:
+        return document_error(404, "Document not found", f"There is no PDF document record #{record_id}.")
     if not path.lower().endswith(".pdf" if kind == "pdf" else ".docx"):
         abort(404)
+    if not os.path.isfile(path):
+        return unavailable_response(path, f"Document #{record_id}")
     return send_file(path, as_attachment=(kind == "word"))
 
 
@@ -133,8 +193,14 @@ def document(kind, record_id):
 def outgoing_pdf():
     relative = request.args.get("path", "")
     configured = current_app.config["OUTGOING_DIR"]
-    if not configured or not os.path.isdir(configured):
-        abort(404)
+    if not configured:
+        abort(404)  # never fall back to the working directory
+    if not os.path.isdir(configured):
+        reason, detail = unavailable_reason(os.path.join(configured, "x.pdf"))
+        current_app.logger.warning("Outgoing PDF folder unavailable (%s: %s): %s", reason, detail, configured)
+        return document_error(503, "Outgoing folder unavailable",
+                              f"The outgoing PDF folder is not reachable from the web server ({detail}).",
+                              hint="Check that the OneDrive / shared folder is available to the account running the web app.")
     base = os.path.realpath(configured)
     path = os.path.realpath(os.path.join(base, relative))
     try:

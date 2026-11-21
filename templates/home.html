@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-rt="wayfind">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,20 +7,24 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='Icon.ico') }}">
     <link href="{{ url_for('static', filename='erp.css') }}?v=7" rel="stylesheet">
-    <link href="{{ url_for('static', filename='home.css') }}?v=1" rel="stylesheet">
+    <link href="{{ url_for('static', filename='home.css') }}?v=2" rel="stylesheet">
+    {% include 'theme_head.html' %}
 </head>
 <body class="bg-light">
-<main class="container-fluid home-page">
+<main class="container-fluid py-4 home-page">
     {% include 'brand_header.html' %}
-    <section class="home-search" id="workspace-content" tabindex="-1">
-        <img class="home-logo" src="{{ url_for('static', filename='neousys-logo.jpg') }}" alt="" width="340" height="85">
-        <h1 class="visually-hidden">Search serial, SO and item numbers</h1>
+    {# Same header pattern as the Warehouse Actions pages (Receiving, Borrow Log). #}
+    <header class="brand-header home-header" id="workspace-content" tabindex="-1">
+        <div><div class="page-eyebrow">WAREHOUSE / HOME</div>
+        <h1 class="page-title">Search warehouse records</h1></div>
+        <a class="btn btn-outline-secondary" href="{{ url_for('inventory_count.index') }}">Browse all inventory</a>
+    </header>
+    <section class="home-panel home-search-panel" aria-label="Search">
         {% with search_autofocus=true %}{% include 'search_box.html' %}{% endwith %}
-        <p class="home-links"><a href="{{ url_for('inventory_count.index') }}">Browse all inventory</a></p>
     </section>
-    <section class="home-floor-map" aria-labelledby="floor-map-heading">
-        <div class="home-floor-map-heading">
-            <div><p class="page-eyebrow">WAREHOUSE / FLOOR MAP R7</p><h2 id="floor-map-heading">Explore the warehouse</h2></div>
+    <section class="home-panel home-floor-map" aria-labelledby="floor-map-heading">
+        <div class="home-panel-title">
+            <div><h2 id="floor-map-heading">Floor map R7</h2><span>Explore the warehouse — rotate, zoom and inspect zones</span></div>
             <a href="{{ url_for('static', filename='floor-map-3d.html') }}" target="_blank" rel="noopener">Open full map ↗</a>
         </div>
         <iframe class="home-floor-map-frame" src="{{ url_for('static', filename='floor-map-3d.html') }}?embed=1" title="Interactive 3D warehouse floor map — rotate, zoom and inspect zones"></iframe>
