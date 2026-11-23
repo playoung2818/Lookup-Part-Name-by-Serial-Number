@@ -24,11 +24,11 @@
     </section>
     <section class="home-panel home-floor-map" aria-labelledby="floor-map-heading">
         <div class="home-panel-title">
-            <div><h2 id="floor-map-heading">Floor map R7</h2><span>Explore the warehouse — rotate, zoom and inspect zones</span></div>
+            <div><h2 id="floor-map-heading">Floor map</h2></div>
             <a href="{{ url_for('static', filename='floor-map-3d.html') }}" target="_blank" rel="noopener">Open full map ↗</a>
         </div>
         <iframe class="home-floor-map-frame" src="{{ url_for('static', filename='floor-map-3d.html') }}?embed=1" title="Interactive 3D warehouse floor map — rotate, zoom and inspect zones"></iframe>
-        <p class="home-floor-map-note">Based on Floor Map R7 1. Heights and colors are illustrative; no live inventory data is shown.</p>
+        <p class="home-floor-map-note">Based on the warehouse floor plan. Heights and colors are illustrative; no live inventory data is shown.</p>
     </section>
 </main>
 </body>

@@ -103,7 +103,7 @@
     detail.replaceChildren();
     const icon = document.createElement('span'); icon.className='detail-icon'; icon.textContent='↗';
     const text = document.createElement('div'), heading = document.createElement('h2'), desc = document.createElement('p');
-    heading.textContent=f.name; desc.textContent=`${colors[f.category][0]} · ${f.description || 'Fixture shown on Floor Map R7 1.'}`;
+    heading.textContent=f.name; desc.textContent=`${colors[f.category][0]} · ${f.description || 'Fixture shown on the warehouse floor plan.'}`;
     text.append(heading,desc); detail.append(icon,text); render();
   }
   function render() {

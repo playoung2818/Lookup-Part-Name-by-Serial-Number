@@ -3,7 +3,7 @@
 Flask web app for the NTA warehouse, backed by the existing PostgreSQL database
 (`receiving_log`, `wo_details`, `outgoing_records`, `warehouse_borrow_log`, ...).
 
-![Animation](https://github.com/user-attachments/assets/639a5ecf-670b-4952-8bad-09c2a29fa427)
+![Demo: serial search, scanning serials into a receiving invoice, and the borrow log](Animation.gif)
 
 ## Features
 
