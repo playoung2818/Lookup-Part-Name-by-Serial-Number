@@ -11,6 +11,65 @@ from functions.serial_lookup import find_receiving_serial, record_dict, serial_k
 
 api_bp = Blueprint('api', __name__)
 
+@api_bp.route('/climate', methods=['GET'])
+def climate():
+    """Hub 2 humidity for the homepage panel: latest reading and chart points."""
+    from functions.switchbot import chart_data
+    ok_range = (current_app.config['CLIMATE_OK_MIN'], current_app.config['CLIMATE_OK_MAX'])
+    try:
+        data = chart_data(db.engine, request.args.get('range', '24h'), ok_range=ok_range)
+    except SQLAlchemyError:
+        current_app.logger.exception('Climate readings unavailable')
+        return jsonify(error='Humidity history is unavailable.'), 503
+    response = jsonify(data)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+def humidifier_service():
+    """One shared Humidifier (cached status, rate-limited commands) per app."""
+    from functions.switchbot import Humidifier
+    token, secret = current_app.config.get('SWITCHBOT_TOKEN'), current_app.config.get('SWITCHBOT_SECRET')
+    if not token or not secret:
+        return None
+    if 'humidifier' not in current_app.extensions:
+        current_app.extensions['humidifier'] = Humidifier(token, secret, current_app.config.get('SWITCHBOT_HUMIDIFIER_ID', ''))
+    return current_app.extensions['humidifier']
+
+
+@api_bp.route('/humidifier', methods=['GET', 'POST'])
+def humidifier():
+    """Warehouse humidifier: status (GET) and on/off/mode commands (POST from the homepage)."""
+    from functions.switchbot import SwitchBotError
+    service = humidifier_service()
+    if service is None:
+        return jsonify(error='SwitchBot is not configured.'), 503
+    if request.method == 'POST':
+        # No login in this app: only accept commands sent by the homepage script. A custom header
+        # cannot be added by other websites or plain links (no CORS is allowed), so they cannot
+        # trigger commands. Every command is logged with the caller's address.
+        if request.headers.get('X-Warehouse-Control') != 'humidifier' or not request.is_json:
+            return jsonify(error='Commands are only accepted from the homepage.'), 403
+        data = request.get_json(silent=True) or {}
+        try:
+            sent = service.command(data.get('action'), data.get('mode'), data.get('target'))
+        except ValueError as error:
+            return jsonify(error=str(error)), 400
+        except (SwitchBotError, OSError) as error:
+            current_app.logger.warning('Humidifier command failed: %s', error)
+            return jsonify(error='The humidifier did not accept the command. Try again shortly.'), 502
+        current_app.logger.warning('Humidifier command %s %s from %s', sent['command'], sent['parameter'], request.remote_addr)
+        return jsonify(ok=True, command=sent['command'])
+    try:
+        status = service.status(force=request.args.get('refresh') == '1')
+    except (SwitchBotError, OSError) as error:
+        current_app.logger.warning('Humidifier status unavailable: %s', error)
+        return jsonify(error='Humidifier status is unavailable.'), 503
+    response = jsonify(status)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 SHEET_FIELDS = ('entry_date', 'invoice_number', 'box_number', 'pod_number', 'part_number', 'quantity')
 
 

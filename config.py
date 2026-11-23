@@ -42,5 +42,13 @@ class Config:
     MES_BASE_URL = os.getenv('MES_BASE_URL', 'http://192.168.60.215:5001')
     # File shares the web app must be able to open (work-order PDFs). Checked by /health
     # and at startup. Semicolon-separated; empty disables the check.
+    # SwitchBot Hub 2 humidity panel on the homepage (functions/switchbot.py).
+    SWITCHBOT_TOKEN = os.getenv('SWITCHBOT_TOKEN', '').strip()
+    SWITCHBOT_SECRET = os.getenv('SWITCHBOT_SECRET', '').strip()
+    SWITCHBOT_DEVICE_ID = os.getenv('SWITCHBOT_DEVICE_ID', '').strip()  # blank = first Hub 2
+    SWITCHBOT_HUMIDIFIER_ID = os.getenv('SWITCHBOT_HUMIDIFIER_ID', '').strip()  # blank = first Evaporative Humidifier
+    SWITCHBOT_POLL_SECONDS = int(os.getenv('SWITCHBOT_POLL_SECONDS', '300'))
+    CLIMATE_OK_MIN = float(os.getenv('CLIMATE_OK_MIN', '40'))  # % RH, inclusive
+    CLIMATE_OK_MAX = float(os.getenv('CLIMATE_OK_MAX', '80'))
     REQUIRED_SHARES = [share for share in os.getenv('RECEIVING_REQUIRED_SHARES', r'\\quickbook2024\d').split(';') if share]
 

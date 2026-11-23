@@ -21,3 +21,56 @@ body > main.home-page { display: block; min-height: 0; max-width: 1900px; }
     .home-header .btn { white-space: nowrap; }
     .home-floor-map-frame { height: 940px; }
 }
+/* Warehouse humidity (SwitchBot Hub 2). OK band = CLIMATE_OK_MIN..MAX, inclusive. */
+.home-climate { position: relative; }
+.climate-ranges { display: inline-flex; border: 1px solid var(--t-rule-strong, var(--line)); }
+.climate-ranges button { border: 0; background: var(--t-surface, #fff); color: var(--t-ink-2, #36455a); font: inherit; font-size: 12px; padding: 4px 12px; }
+.climate-ranges button + button { border-left: 1px solid var(--t-rule-strong, var(--line)); }
+.climate-ranges button[aria-pressed="true"] { background: var(--t-ink, #182433); color: var(--t-surface, #fff); font-weight: 600; }
+.climate-body { display: grid; grid-template-columns: minmax(220px, 260px) 1fr; gap: 16px; padding: 16px; align-items: stretch; }
+.climate-now { display: flex; flex-direction: column; gap: 8px; padding-right: 16px; border-right: 1px solid var(--line); }
+.climate-value { font-family: var(--t-mono, ui-monospace, monospace); font-size: 56px; line-height: 1; font-weight: 700; color: var(--t-ink, #182433); font-variant-numeric: tabular-nums; }
+.climate-value small { font-size: 15px; font-weight: 600; margin-left: 6px; color: var(--t-muted, #626f80); }
+.climate-status { align-self: flex-start; font-size: 12px; font-weight: 700; padding: 3px 10px; border: 1px solid currentColor; }
+.climate-status.ok { color: var(--t-ok, #2b7643); background: var(--t-ok-soft, #edf7ef); }
+.climate-status.bad { color: var(--t-bad, #b23646); background: var(--t-bad-soft, #fcebed); }
+.climate-status.stale { color: var(--t-warn, #8a661b); background: var(--t-warn-soft, #fff5dd); }
+.climate-meta { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 4px 0 0; font-size: 12px; }
+.climate-meta dt { font-weight: 500; color: var(--t-muted, #626f80); }
+.climate-meta dd { margin: 0; font-variant-numeric: tabular-nums; }
+.climate-chart { position: relative; margin: 0; min-height: 220px; }
+.climate-chart svg { display: block; width: 100%; height: 240px; overflow: visible; }
+.climate-chart .band { fill: var(--t-ok-soft, #edf7ef); }
+.climate-chart .grid { stroke: var(--t-rule, #dce1e7); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.climate-chart .grid.limit { stroke: var(--t-ok, #2b7643); stroke-dasharray: 4 3; }
+.climate-chart .axis { font-size: 11px; fill: var(--t-muted, #626f80); font-family: var(--t-mono, ui-monospace, monospace); }
+.climate-chart .line { fill: none; stroke: var(--t-accent, #206bc4); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.climate-chart .out { fill: var(--t-bad, #b23646); }
+.climate-chart .cursor { stroke: var(--t-ink-2, #36455a); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.climate-chart .empty { font-size: 14px; fill: var(--t-muted, #626f80); }
+.climate-tip { position: absolute; top: -6px; transform: translate(-50%, -100%); white-space: nowrap; font-size: 12px; padding: 4px 8px;
+    background: var(--t-ink, #182433); color: var(--t-surface, #fff); pointer-events: none; font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) { .climate-body { grid-template-columns: 1fr; } .climate-now { border-right: 0; padding-right: 0; } }
+/* Humidifier (SwitchBot Evaporative Humidifier): status + controls. */
+.humidifier-body { display: grid; grid-template-columns: minmax(220px, 260px) 1fr; gap: 16px; padding: 16px; }
+.humidifier-status { display: flex; flex-direction: column; gap: 10px; padding-right: 16px; border-right: 1px solid var(--line); }
+.humidifier-power { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.hum-power { font-family: var(--t-mono, ui-monospace, monospace); font-size: 28px; font-weight: 700; padding: 0 10px; border: 2px solid currentColor; }
+.hum-power.on { color: var(--t-ok, #2b7643); background: var(--t-ok-soft, #edf7ef); }
+.hum-power.off { color: var(--t-muted, #626f80); background: var(--t-surface-2, #eef2f6); }
+.hum-power.unknown { color: var(--t-warn, #8a661b); background: var(--t-warn-soft, #fff5dd); }
+.hum-mode-name { font-size: 13px; font-weight: 600; color: var(--t-ink-2, #36455a); }
+.hum-filter-bar { display: block; width: 140px; height: 6px; margin-top: 4px; border: 1px solid var(--t-rule-strong, var(--line)); }
+.hum-filter-bar > span { display: block; height: 100%; width: 0; background: var(--t-ok, #2b7643); }
+.hum-filter-bar > span.low { background: var(--t-bad, #b23646); }
+.humidifier-controls { display: flex; flex-direction: column; gap: 12px; margin: 0; }
+.hum-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hum-label { width: 56px; font-size: 12px; font-weight: 600; color: var(--t-ink-2, #36455a); margin: 0; }
+.hum-row .form-select { width: auto; min-width: 200px; }
+.hum-target { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; margin: 0; }
+.hum-target[hidden] { display: none; }
+.hum-target .form-control { width: 76px; }
+.hum-note { margin: 0; font-size: 11px; color: var(--t-muted, #626f80); }
+.hum-message { margin: 0; min-height: 1.2em; font-size: 12px; font-weight: 600; color: var(--t-ok, #2b7643); }
+.hum-message.error { color: var(--t-bad, #b23646); }
+@media (max-width: 760px) { .humidifier-body { grid-template-columns: 1fr; } .humidifier-status { border-right: 0; padding-right: 0; } }

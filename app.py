@@ -51,7 +51,7 @@ def create_app(test_config=None):
 
     @app.get('/health')
     def health():
-        """Used by scripts/start_web_desktop.ps1: can THIS process open the file shares?"""
+        """Can THIS process open the file shares? (Shown by scripts/restart_app.ps1.)"""
         shares = {share: share_reachable(share) for share in app.config.get('REQUIRED_SHARES', [])}
         response = jsonify(ok=all(shares.values()), pid=os.getpid(), shares=shares)
         response.headers['Cache-Control'] = 'no-store'
@@ -82,17 +82,35 @@ def serve(app, port=5000):
     host = os.environ.get('RECEIVING_CHECK_HOST', '192.168.60.215')
     if already_running(host, port):
         message = (f'Another copy of the app is already serving port {port}; not starting a second one. '
-                   'To restart it correctly (desktop sign-in, with file-share access) run: '
-                   'schtasks /run /tn "Receiving Log Web App (desktop)"')
+                   'To restart it: on the server desktop (Remote Desktop), double-click '
+                   '"Restart Receiving App.cmd" in the project folder.')
         logging.error(message)
         print(message, file=sys.stderr)
         sys.exit(1)
     for share in app.config.get('REQUIRED_SHARES', []):
         if not share_reachable(share):
             logging.warning('Cannot open %s from this Windows sign-in; work-order PDFs will fail. '
-                            'Start the app with: schtasks /run /tn "Receiving Log Web App (desktop)"', share)
+                            'Start it from the server desktop: double-click "Restart Receiving App.cmd".', share)
+    start_climate_recorder(app)
     # Never create or migrate tables on startup; schema changes require approval.
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+
+def start_climate_recorder(app):
+    """Record a Hub 2 reading every SWITCHBOT_POLL_SECONDS (only in the serving process)."""
+    token, secret = app.config.get('SWITCHBOT_TOKEN'), app.config.get('SWITCHBOT_SECRET')
+    if not isinstance(token, str) or not isinstance(secret, str) or not token or not secret:
+        logging.info('SwitchBot token/secret not set; Hub 2 humidity is not recorded.')
+        return None
+    try:  # the humidity panel must never stop the app from starting
+        from functions.switchbot import Recorder
+        with app.app_context():
+            engine = db.engine
+        return Recorder(engine, token, secret, app.config.get('SWITCHBOT_POLL_SECONDS', 300),
+                        app.config.get('SWITCHBOT_DEVICE_ID', '')).start()
+    except Exception:
+        logging.exception('Hub 2 recorder not started')
+        return None
 
 
 def main():

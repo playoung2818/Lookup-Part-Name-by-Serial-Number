@@ -1,0 +1,10 @@
+const assert = require('node:assert/strict');
+const {confirmText, filterText, MODES} = require('../static/home_humidifier.js');
+assert.equal(confirmText('on'), 'Turn the warehouse humidifier ON?');
+assert.equal(confirmText('off'), 'Turn the warehouse humidifier OFF?');
+assert.equal(confirmText('mode', 5, 60), 'Set the humidifier to Target humidity 60 %?');
+assert.equal(confirmText('mode', 7), 'Set the humidifier to Auto mode?');
+assert.equal(filterText(1, 240), '239 of 240 h left');
+assert.equal(filterText(null, 240), '--');
+assert.equal(Object.keys(MODES).length, 8);
+console.log('Homepage humidifier confirmation and filter text tests passed.');

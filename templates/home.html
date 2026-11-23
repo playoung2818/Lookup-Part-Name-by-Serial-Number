@@ -7,7 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='Icon.ico') }}">
     <link href="{{ url_for('static', filename='erp.css') }}?v=7" rel="stylesheet">
-    <link href="{{ url_for('static', filename='home.css') }}?v=2" rel="stylesheet">
+    <link href="{{ url_for('static', filename='home.css') }}?v=4" rel="stylesheet">
     {% include 'theme_head.html' %}
 </head>
 <body class="bg-light">
@@ -16,11 +16,66 @@
     {# Same header pattern as the Warehouse Actions pages (Receiving, Borrow Log). #}
     <header class="brand-header home-header" id="workspace-content" tabindex="-1">
         <div><div class="page-eyebrow">WAREHOUSE / HOME</div>
-        <h1 class="page-title">Search warehouse records</h1></div>
+        <h1 class="page-title">NTA Warehouse Website</h1></div>
         <a class="btn btn-outline-secondary" href="{{ url_for('inventory_count.index') }}">Browse all inventory</a>
     </header>
     <section class="home-panel home-search-panel" aria-label="Search">
         {% with search_autofocus=true %}{% include 'search_box.html' %}{% endwith %}
+    </section>
+    <section class="home-panel home-climate" id="climate-panel" aria-labelledby="climate-heading"
+             data-ok-min="{{ config.CLIMATE_OK_MIN|round(0)|int }}" data-ok-max="{{ config.CLIMATE_OK_MAX|round(0)|int }}">
+        <div class="home-panel-title">
+            <div><h2 id="climate-heading">Warehouse humidity</h2><span id="climate-source">SwitchBot Hub 2</span></div>
+            <div class="climate-ranges" role="group" aria-label="Chart range">
+                <button type="button" data-range="24h" aria-pressed="true">24 h</button><button type="button" data-range="7d" aria-pressed="false">7 d</button><button type="button" data-range="30d" aria-pressed="false">30 d</button>
+            </div>
+        </div>
+        <div class="climate-body">
+            <div class="climate-now">
+                <div class="climate-value"><span id="climate-humidity">--</span><small>% RH</small></div>
+                <div id="climate-status" class="climate-status" role="status" aria-live="polite">Loading…</div>
+                <dl class="climate-meta">
+                    <dt>Temperature</dt><dd id="climate-temp">--</dd>
+                    <dt>OK range</dt><dd>{{ config.CLIMATE_OK_MIN|round(0)|int }}–{{ config.CLIMATE_OK_MAX|round(0)|int }} % RH</dd>
+                    <dt>Updated</dt><dd id="climate-updated">--</dd>
+                </dl>
+            </div>
+            <figure class="climate-chart">
+                <svg id="climate-svg" viewBox="0 0 900 260" preserveAspectRatio="none" role="img" aria-labelledby="climate-caption"></svg>
+                <div id="climate-tip" class="climate-tip" hidden></div>
+                <figcaption id="climate-caption" class="visually-hidden">Humidity chart</figcaption>
+            </figure>
+        </div>
+    </section>
+    <section class="home-panel home-humidifier" id="humidifier-panel" aria-labelledby="humidifier-heading">
+        <div class="home-panel-title">
+            <div><h2 id="humidifier-heading">Humidifier</h2><span id="hum-device">SwitchBot Evaporative Humidifier</span></div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="hum-refresh">Refresh</button>
+        </div>
+        <div class="humidifier-body">
+            <div class="humidifier-status">
+                <div class="humidifier-power"><span id="hum-power" class="hum-power unknown">—</span><span id="hum-mode-name" class="hum-mode-name">Loading…</span></div>
+            </div>
+            <form class="humidifier-controls" id="hum-controls">
+                <div class="hum-row">
+                    <span class="hum-label">Power</span>
+                    <button type="button" class="btn btn-outline-secondary" data-hum-action="on">Turn on</button>
+                    <button type="button" class="btn btn-outline-secondary" data-hum-action="off">Turn off</button>
+                </div>
+                <div class="hum-row">
+                    <label class="hum-label" for="hum-mode">Mode</label>
+                    <select id="hum-mode" class="form-select">
+                        <option value="5">Target humidity</option><option value="7">Auto</option><option value="6">Sleep</option>
+                        <option value="4">Level 1 (low)</option><option value="3">Level 2</option><option value="2">Level 3</option><option value="1">Level 4 (high)</option>
+                        <option value="8">Drying (dry the filter)</option>
+                    </select>
+                    <label class="hum-target" for="hum-target">Target <input id="hum-target" class="form-control" type="number" min="0" max="100" step="1" value="60"> %</label>
+                    <button type="button" class="btn btn-primary" data-hum-action="mode">Apply</button>
+                </div>
+                <p class="hum-note">No login on this site: anyone on the network can use these controls. Every change asks for confirmation and is logged.</p>
+                <p id="hum-message" class="hum-message" role="status" aria-live="polite"></p>
+            </form>
+        </div>
     </section>
     <section class="home-panel home-floor-map" aria-labelledby="floor-map-heading">
         <div class="home-panel-title">
@@ -31,5 +86,7 @@
         <p class="home-floor-map-note">Based on the warehouse floor plan. Heights and colors are illustrative; no live inventory data is shown.</p>
     </section>
 </main>
+<script src="{{ url_for('static', filename='home_climate.js') }}?v=1" defer></script>
+<script src="{{ url_for('static', filename='home_humidifier.js') }}?v=2" defer></script>
 </body>
 </html>

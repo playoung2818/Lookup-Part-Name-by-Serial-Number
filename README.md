@@ -34,13 +34,12 @@ Work-order PDFs live on `\\quickbook2024\d`. Windows only lets programs started 
 **desktop sign-in** use the saved login for that share; a copy started from SSH or a
 background script gets "the sign-in was rejected".
 
-- `scripts/install_desktop_task.ps1` (run once) registers **Receiving Log Web App (desktop)**:
-  at sign-in and every 5 minutes it runs `scripts/start_web_desktop.ps1`, which keeps exactly
-  one copy running under the desktop sign-in. It restarts the app if it is down, if two copies
-  share port 5000, or if the running copy cannot open the share. Actions go to `web.watchdog.log`.
-- **To restart (also from SSH):** `scripts\restart_web.cmd`. Do not run `python app.py` from SSH.
-  The app refuses to start a second copy, and `GET /health` reports whether it can open the share.
-- It needs the desktop session to stay signed in (disconnecting RDP is fine; signing out is not).
+- **To start or restart:** on the server desktop (Remote Desktop), double-click
+  `Restart Receiving App.cmd` in the project folder and approve the administrator prompt.
+  It stops every copy on port 5000, starts one new copy and reports whether the share is
+  reachable. Do not start the app from SSH.
+- The app refuses to start a second copy on port 5000, and `GET /health` reports whether the
+  running copy can open the share (`"ok": true`).
 
 `config.py` loads `.env`; real environment variables take precedence. `.env` is
 ignored by Git; never commit credentials. If a password was ever committed or
