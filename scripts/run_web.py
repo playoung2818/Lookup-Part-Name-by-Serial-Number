@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-from app import create_app
+from app import create_app, serve
 
 
 def main():
@@ -19,8 +19,7 @@ def main():
                                   backupCount=3, encoding='utf-8')
     handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s'))
     logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
-    app = create_app()
-    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+    serve(create_app())
 
 
 if __name__ == '__main__':

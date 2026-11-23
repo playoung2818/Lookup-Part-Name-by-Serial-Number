@@ -18,3 +18,5 @@ venv/
 
 # Runtime logs
 *.log
+
+*.ps1

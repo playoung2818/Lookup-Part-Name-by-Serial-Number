@@ -40,4 +40,7 @@ class Config:
         str(SHARE_ROOT / '01 Incoming' / 'Incoming Form Template.docx'))
     MRP_BASE_URL = os.getenv('MRP_BASE_URL', 'http://192.168.60.215:5002')
     MES_BASE_URL = os.getenv('MES_BASE_URL', 'http://192.168.60.215:5001')
+    # File shares the web app must be able to open (work-order PDFs). Checked by /health
+    # and at startup. Semicolon-separated; empty disables the check.
+    REQUIRED_SHARES = [share for share in os.getenv('RECEIVING_REQUIRED_SHARES', r'\\quickbook2024\d').split(';') if share]
 

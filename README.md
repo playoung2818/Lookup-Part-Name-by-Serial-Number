@@ -27,7 +27,20 @@ python scripts/run_web.py
 ```
 
 The app serves on port 5000: **http://192.168.60.215:5000**.
-`scripts/install_startup_task.ps1` registers it as a Windows startup task.
+
+### Running it on the server (keep QuickBooks PDFs working)
+
+Work-order PDFs live on `\\quickbook2024\d`. Windows only lets programs started from the
+**desktop sign-in** use the saved login for that share; a copy started from SSH or a
+background script gets "the sign-in was rejected".
+
+- `scripts/install_desktop_task.ps1` (run once) registers **Receiving Log Web App (desktop)**:
+  at sign-in and every 5 minutes it runs `scripts/start_web_desktop.ps1`, which keeps exactly
+  one copy running under the desktop sign-in. It restarts the app if it is down, if two copies
+  share port 5000, or if the running copy cannot open the share. Actions go to `web.watchdog.log`.
+- **To restart (also from SSH):** `scripts\restart_web.cmd`. Do not run `python app.py` from SSH.
+  The app refuses to start a second copy, and `GET /health` reports whether it can open the share.
+- It needs the desktop session to stay signed in (disconnecting RDP is fine; signing out is not).
 
 `config.py` loads `.env`; real environment variables take precedence. `.env` is
 ignored by Git; never commit credentials. If a password was ever committed or
@@ -41,6 +54,7 @@ shared, rotate it: ignoring `.env` does not remove it from Git history.
 | `INVOICE_DIR`, `OUTGOING_DIR` | Shared document folders. Default to `~/OneDrive - neousys-tech/Share NTA Warehouse/...` for the user running the app. |
 | `RECEIVING_REFERENCE_PATH`, `RECEIVING_INCOMING_TEMPLATE_PATH` | Receiving POD reference workbook and incoming Word template (same OneDrive default). |
 | `SHEET_UPDATE_TOKEN` | Enables `POST /api/sheet-update`. Unset = endpoint disabled. |
+| `RECEIVING_REQUIRED_SHARES` | Shares checked by `/health` and at startup (`;`-separated). Default `\\quickbook2024\d`. |
 
 ## Database safety
 

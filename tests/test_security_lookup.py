@@ -127,6 +127,7 @@ class SchemaSafetyTests(unittest.TestCase):
         self.assertEqual([c.name for c in ReceivingLog.__table__.primary_key.columns], ['id'])
         import app as app_module
         with patch.object(app_module, 'create_app') as factory, \
+             patch.object(app_module, 'already_running', return_value=False), \
              patch.object(db, 'create_all') as create_all:
             app_module.main()
         factory.return_value.run.assert_called_once()
