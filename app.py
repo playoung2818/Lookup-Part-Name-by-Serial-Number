@@ -106,8 +106,10 @@ def start_climate_recorder(app):
         from functions.switchbot import Recorder
         with app.app_context():
             engine = db.engine
-        return Recorder(engine, token, secret, app.config.get('SWITCHBOT_POLL_SECONDS', 300),
-                        app.config.get('SWITCHBOT_DEVICE_ID', '')).start()
+        recorder = Recorder(engine, token, secret, app.config.get('SWITCHBOT_POLL_SECONDS', 300),
+                            app.config.get('SWITCHBOT_DEVICE_ID', '')).start()
+        app.extensions['climate_recorder'] = recorder  # used by the homepage Refresh button
+        return recorder
     except Exception:
         logging.exception('Hub 2 recorder not started')
         return None

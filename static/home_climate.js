@@ -82,16 +82,40 @@
             ? `Humidity over the last ${data.range}: ${Math.min(...values)}–${Math.max(...values)} % RH; OK range ${okMin}–${okMax} %.`
             : 'No humidity readings in this period yet.';
     };
-    const load = async () => {
+    // Humidifier power (read-only). The server asks SwitchBot at most once a minute.
+    const loadHumidifier = async (fresh = false) => {
+        const label = $('climate-hum-power');
+        if (!label) return;
         try {
-            const response = await fetch(`/api/climate?range=${range}`, {cache: 'no-store'});
+            const response = await fetch(`/api/humidifier${fresh ? '?refresh=1' : ''}`, {cache: 'no-store'});
+            const data = await response.json();
+            if (!response.ok) throw Error();
+            const power = data.power === 'on' || data.power === 'off' ? data.power : 'unknown';
+            label.textContent = power === 'unknown' ? 'Unknown' : power.toUpperCase();
+            label.className = `hum-state ${power}`;
+            label.title = power === 'on' ? `${data.mode_name} mode` : '';
+        } catch (_) {
+            label.textContent = 'Unavailable'; label.className = 'hum-state unknown';
+        }
+    };
+    const load = async (fresh = false) => {
+        const humidifier = loadHumidifier(fresh);
+        try {
+            const response = await fetch(`/api/climate?range=${range}${fresh ? '&refresh=1' : ''}`, {cache: 'no-store'});
             if (!response.ok) throw Error();
             render(await response.json());
         } catch (_) {
             const box = $('climate-status');
             box.textContent = 'Humidity data is unavailable right now.'; box.className = 'climate-status stale';
         }
+        await humidifier;
     };
+    // Refresh: fresh Hub 2 reading + humidifier status (the server allows one fresh reading per minute).
+    const refreshButton = $('climate-refresh');
+    refreshButton.addEventListener('click', async () => {
+        refreshButton.disabled = true; refreshButton.textContent = 'Refreshing…';
+        try { await load(true); } finally { refreshButton.disabled = false; refreshButton.textContent = 'Refresh'; }
+    });
     for (const button of panel.querySelectorAll('[data-range]')) {
         button.addEventListener('click', () => {
             range = button.dataset.range;

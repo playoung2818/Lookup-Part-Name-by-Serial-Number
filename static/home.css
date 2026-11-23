@@ -51,26 +51,9 @@ body > main.home-page { display: block; min-height: 0; max-width: 1900px; }
 .climate-tip { position: absolute; top: -6px; transform: translate(-50%, -100%); white-space: nowrap; font-size: 12px; padding: 4px 8px;
     background: var(--t-ink, #182433); color: var(--t-surface, #fff); pointer-events: none; font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) { .climate-body { grid-template-columns: 1fr; } .climate-now { border-right: 0; padding-right: 0; } }
-/* Humidifier (SwitchBot Evaporative Humidifier): status + controls. */
-.humidifier-body { display: grid; grid-template-columns: minmax(220px, 260px) 1fr; gap: 16px; padding: 16px; }
-.humidifier-status { display: flex; flex-direction: column; gap: 10px; padding-right: 16px; border-right: 1px solid var(--line); }
-.humidifier-power { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.hum-power { font-family: var(--t-mono, ui-monospace, monospace); font-size: 28px; font-weight: 700; padding: 0 10px; border: 2px solid currentColor; }
-.hum-power.on { color: var(--t-ok, #2b7643); background: var(--t-ok-soft, #edf7ef); }
-.hum-power.off { color: var(--t-muted, #626f80); background: var(--t-surface-2, #eef2f6); }
-.hum-power.unknown { color: var(--t-warn, #8a661b); background: var(--t-warn-soft, #fff5dd); }
-.hum-mode-name { font-size: 13px; font-weight: 600; color: var(--t-ink-2, #36455a); }
-.hum-filter-bar { display: block; width: 140px; height: 6px; margin-top: 4px; border: 1px solid var(--t-rule-strong, var(--line)); }
-.hum-filter-bar > span { display: block; height: 100%; width: 0; background: var(--t-ok, #2b7643); }
-.hum-filter-bar > span.low { background: var(--t-bad, #b23646); }
-.humidifier-controls { display: flex; flex-direction: column; gap: 12px; margin: 0; }
-.hum-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.hum-label { width: 56px; font-size: 12px; font-weight: 600; color: var(--t-ink-2, #36455a); margin: 0; }
-.hum-row .form-select { width: auto; min-width: 200px; }
-.hum-target { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; margin: 0; }
-.hum-target[hidden] { display: none; }
-.hum-target .form-control { width: 76px; }
-.hum-note { margin: 0; font-size: 11px; color: var(--t-muted, #626f80); }
-.hum-message { margin: 0; min-height: 1.2em; font-size: 12px; font-weight: 600; color: var(--t-ok, #2b7643); }
-.hum-message.error { color: var(--t-bad, #b23646); }
-@media (max-width: 760px) { .humidifier-body { grid-template-columns: 1fr; } .humidifier-status { border-right: 0; padding-right: 0; } }
+/* Humidifier power, shown in the humidity panel. */
+.hum-state { font-weight: 700; padding: 0 6px; border: 1px solid currentColor; }
+.hum-state.on { color: var(--t-ok, #2b7643); background: var(--t-ok-soft, #edf7ef); }
+.hum-state.off { color: var(--t-muted, #626f80); background: var(--t-surface-2, #eef2f6); }
+.hum-state.unknown { color: var(--t-warn, #8a661b); border-color: transparent; }
+.climate-actions { display: flex; align-items: center; gap: 8px; }

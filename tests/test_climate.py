@@ -76,6 +76,17 @@ class SwitchBotTests(unittest.TestCase):
              self.assertLogs('functions.switchbot', 'WARNING'):
             recorder.tick()
 
+    def test_refresh_reads_now_but_at_most_once_a_minute(self):
+        recorder = switchbot.Recorder(test_engine(), 't', 's', interval=300)
+        recorder.device = {'id': 'HUB2AE', 'name': 'Hub 2 AE'}
+        with patch.object(switchbot, 'record_once') as record:
+            self.assertTrue(recorder.refresh())
+            self.assertFalse(recorder.refresh())          # second click within a minute: skipped
+            self.assertEqual(record.call_count, 1)
+            recorder._last_reading -= 61
+            self.assertTrue(recorder.refresh())
+            self.assertEqual(record.call_count, 2)
+
     def test_no_credentials_no_recorder(self):
         app = create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI': 'sqlite://', 'SWITCHBOT_TOKEN': '', 'SWITCHBOT_SECRET': ''})
         self.assertIsNone(start_climate_recorder(app))
@@ -132,6 +143,21 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(response.headers['Cache-Control'], 'no-store')
         self.assertEqual(chart.call_args.args[1], '7d')
         self.assertEqual(chart.call_args.kwargs['ok_range'], (40.0, 80.0))
+
+    def test_refresh_parameter_triggers_a_reading(self):
+        class Recorder:
+            calls = 0
+            def refresh(self):
+                Recorder.calls += 1
+        self.app.extensions['climate_recorder'] = Recorder()
+        with patch('functions.switchbot.chart_data', return_value={'range': '24h', 'points': [], 'latest': None, 'ok_range': [40, 80]}):
+            self.client.get('/api/climate')
+            self.assertEqual(Recorder.calls, 0)             # normal minute-by-minute loads never read the device
+            self.client.get('/api/climate?refresh=1')
+            self.assertEqual(Recorder.calls, 1)
+
+    def test_homepage_has_refresh_button(self):
+        self.assertIn('id="climate-refresh"', self.client.get('/').get_data(as_text=True))
 
     def test_api_climate_without_table_is_503(self):
         self.assertEqual(self.client.get('/api/climate').status_code, 503)

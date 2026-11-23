@@ -47,6 +47,8 @@ class Config:
     SWITCHBOT_SECRET = os.getenv('SWITCHBOT_SECRET', '').strip()
     SWITCHBOT_DEVICE_ID = os.getenv('SWITCHBOT_DEVICE_ID', '').strip()  # blank = first Hub 2
     SWITCHBOT_HUMIDIFIER_ID = os.getenv('SWITCHBOT_HUMIDIFIER_ID', '').strip()  # blank = first Evaporative Humidifier
+    # Humidifier target shown on the homepage: a fixed label (the SwitchBot API does not report it).
+    HUMIDIFIER_TARGET = os.getenv('HUMIDIFIER_TARGET', '').strip()
     SWITCHBOT_POLL_SECONDS = int(os.getenv('SWITCHBOT_POLL_SECONDS', '300'))
     CLIMATE_OK_MIN = float(os.getenv('CLIMATE_OK_MIN', '40'))  # % RH, inclusive
     CLIMATE_OK_MAX = float(os.getenv('CLIMATE_OK_MAX', '80'))

@@ -214,14 +214,26 @@ class Recorder:
         self.interval, self.device_id = max(60, int(interval)), device_id
         self.device = None
         self._stop = threading.Event()
+        self._lock = threading.Lock()
+        self._last_reading = float('-inf')  # monotonic time of the last successful reading
 
     def tick(self):
-        try:
-            if self.device is None:
-                self.device = find_hub2(self.token, self.secret, self.device_id)
-            record_once(self.engine, self.token, self.secret, self.device)
-        except Exception as error:  # network, SwitchBot or database problem: try again next interval
-            log.warning('Hub 2 reading not recorded: %s', error)
+        with self._lock:  # the timer and the Refresh button never read at the same time
+            try:
+                if self.device is None:
+                    self.device = find_hub2(self.token, self.secret, self.device_id)
+                record_once(self.engine, self.token, self.secret, self.device)
+                self._last_reading = time.monotonic()
+                return True
+            except Exception as error:  # network, SwitchBot or database problem: try again next interval
+                log.warning('Hub 2 reading not recorded: %s', error)
+                return False
+
+    def refresh(self, min_gap=60):
+        """Refresh button: take a reading now, at most once per `min_gap` seconds."""
+        if time.monotonic() - self._last_reading < min_gap:
+            return False
+        return self.tick()
 
     def run(self):
         while not self._stop.is_set():

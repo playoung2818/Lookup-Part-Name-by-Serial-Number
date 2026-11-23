@@ -16,6 +16,9 @@ def climate():
     """Hub 2 humidity for the homepage panel: latest reading and chart points."""
     from functions.switchbot import chart_data
     ok_range = (current_app.config['CLIMATE_OK_MIN'], current_app.config['CLIMATE_OK_MAX'])
+    recorder = current_app.extensions.get('climate_recorder')
+    if request.args.get('refresh') == '1' and recorder is not None:
+        recorder.refresh()  # fresh Hub 2 reading; skipped if one was taken in the last minute
     try:
         data = chart_data(db.engine, request.args.get('range', '24h'), ok_range=ok_range)
     except SQLAlchemyError:
@@ -37,29 +40,13 @@ def humidifier_service():
     return current_app.extensions['humidifier']
 
 
-@api_bp.route('/humidifier', methods=['GET', 'POST'])
+@api_bp.route('/humidifier', methods=['GET'])
 def humidifier():
-    """Warehouse humidifier: status (GET) and on/off/mode commands (POST from the homepage)."""
+    """Warehouse humidifier power/mode for the homepage (read-only; no control from this site)."""
     from functions.switchbot import SwitchBotError
     service = humidifier_service()
     if service is None:
         return jsonify(error='SwitchBot is not configured.'), 503
-    if request.method == 'POST':
-        # No login in this app: only accept commands sent by the homepage script. A custom header
-        # cannot be added by other websites or plain links (no CORS is allowed), so they cannot
-        # trigger commands. Every command is logged with the caller's address.
-        if request.headers.get('X-Warehouse-Control') != 'humidifier' or not request.is_json:
-            return jsonify(error='Commands are only accepted from the homepage.'), 403
-        data = request.get_json(silent=True) or {}
-        try:
-            sent = service.command(data.get('action'), data.get('mode'), data.get('target'))
-        except ValueError as error:
-            return jsonify(error=str(error)), 400
-        except (SwitchBotError, OSError) as error:
-            current_app.logger.warning('Humidifier command failed: %s', error)
-            return jsonify(error='The humidifier did not accept the command. Try again shortly.'), 502
-        current_app.logger.warning('Humidifier command %s %s from %s', sent['command'], sent['parameter'], request.remote_addr)
-        return jsonify(ok=True, command=sent['command'])
     try:
         status = service.status(force=request.args.get('refresh') == '1')
     except (SwitchBotError, OSError) as error:

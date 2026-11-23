@@ -77,32 +77,25 @@ class RouteTests(unittest.TestCase):
         body = self.client.get('/api/humidifier').json
         self.assertEqual((body['power'], body['mode'], body['device']), ('on', 5, 'Evaporative Humidifier 0A'))
 
-    def test_commands_only_from_the_homepage_script(self):
-        self.assertEqual(self.client.post('/api/humidifier', json={'action': 'off'}).status_code, 403)
-        self.assertEqual(self.client.post('/api/humidifier', data={'action': 'off'},
-                                          headers={'X-Warehouse-Control': 'humidifier'}).status_code, 403)
-        self.assertEqual(self.session.posts, [])
-        with self.assertLogs(self.app.logger, 'WARNING') as logs:
-            response = self.client.post('/api/humidifier', json={'action': 'off'}, headers={'X-Warehouse-Control': 'humidifier'})
-        self.assertEqual((response.status_code, response.json['command']), (200, 'turnOff'))
-        self.assertIn('Humidifier command turnOff', logs.output[0])
-
-    def test_invalid_command_is_400(self):
-        response = self.client.post('/api/humidifier', json={'action': 'mode', 'mode': 5, 'target': 120},
-                                    headers={'X-Warehouse-Control': 'humidifier'})
-        self.assertEqual(response.status_code, 400)
+    def test_commands_are_not_accepted(self):
+        # The homepage only shows power; control was removed, so POST is not allowed at all.
+        response = self.client.post('/api/humidifier', json={'action': 'off'}, headers={'X-Warehouse-Control': 'humidifier'})
+        self.assertEqual(response.status_code, 405)
         self.assertEqual(self.session.posts, [])
 
     def test_not_configured_is_503(self):
         app = create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI': 'sqlite://', 'SWITCHBOT_TOKEN': '', 'SWITCHBOT_SECRET': ''})
         self.assertEqual(app.test_client().get('/api/humidifier').status_code, 503)
 
-    def test_homepage_has_controls_and_no_secrets(self):
+    def test_homepage_shows_target_and_power_but_no_controls(self):
+        self.app.config['HUMIDIFIER_TARGET'] = '60'
         html = self.client.get('/').get_data(as_text=True)
-        self.assertIn('id="humidifier-panel"', html)
-        self.assertIn('data-hum-action="off"', html)
-        self.assertIn('anyone on the network', html)
-
+        self.assertNotIn('id="humidifier-panel"', html)
+        self.assertNotIn('data-hum-action', html)
+        self.assertIn('<dt>Target</dt><dd>60 % RH</dd>', html)
+        self.assertIn('id="climate-hum-power"', html)
+        self.app.config['HUMIDIFIER_TARGET'] = ''
+        self.assertIn('Not set', self.client.get('/').get_data(as_text=True))
 
 if __name__ == '__main__':
     unittest.main()
