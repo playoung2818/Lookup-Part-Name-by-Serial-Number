@@ -33,6 +33,10 @@ def create_app(test_config=None):
                 static_folder="static")
     app.config.from_object(Config)
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
+    # Own cookie name: browsers share cookies across ports, and the MRP (:5002) / MES (:5001)
+    # apps on this host also use "session". Sharing it made them overwrite each other's login,
+    # so open Receiving pages failed to save (HTTP 400) until reloaded.
+    app.config['SESSION_COOKIE_NAME'] = 'nta_warehouse_session'
     if test_config:
         app.config.update(test_config)
 

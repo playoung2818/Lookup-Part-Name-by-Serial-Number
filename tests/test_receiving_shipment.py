@@ -439,6 +439,16 @@ class ShipmentRouteTests(ShipmentTests):
         self.client.get('/receiving')
         self.assertEqual(self.client.get('/receiving/workspace').json['workspace']['id'], before)
 
+    def test_other_apps_session_cookie_does_not_break_saving(self):
+        _, state = self.post_generate()
+        # The MRP app (:5002) on the same host sets its own "session" cookie; browsers share
+        # cookies across ports. It must not replace this app's session (CSRF token).
+        self.client.set_cookie('session', 'mrp-app-session-value', domain='localhost')
+        response = self.client.post('/receiving/row', headers={'X-CSRF-Token': self.csrf},
+                                    json=self.row_payload(state, 0, 'AFTER-MRP-COOKIE'))
+        self.assertEqual(response.status_code, 200, response.get_json())
+        self.assertEqual(self.app.config['SESSION_COOKIE_NAME'], 'nta_warehouse_session')
+
     def test_open_by_enter_without_open_button(self):
         page = self.client.get('/receiving').get_data(as_text=True)
         form = page[page.index('id="invoice-search-form"'):page.index('</form>', page.index('id="invoice-search-form"'))]
