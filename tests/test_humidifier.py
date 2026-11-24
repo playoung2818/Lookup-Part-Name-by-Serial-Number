@@ -65,6 +65,49 @@ class HumidifierTests(unittest.TestCase):
         self.assertEqual(sum(url.endswith('/status') for url in session.gets), 2)       # re-read after a command
 
 
+class FakeHumidifier:
+    def __init__(self, power='off', mode=5, drying=False):
+        self.state = {'power': power, 'mode': mode, 'mode_name': switchbot.HUMIDIFIER_MODES.get(mode), 'drying': drying}
+        self.commands, self.min_command_gap = [], 0
+
+    def status(self, force=False):
+        return dict(self.state)
+
+    def command(self, action, mode=None, target=None):
+        self.commands.append((action, mode, target))
+
+
+class KeepOnTests(unittest.TestCase):
+    def test_off_is_turned_back_on_in_target_mode(self):
+        humidifier = FakeHumidifier(power='off', mode=8)   # yesterday: off after drying
+        with self.assertLogs('functions.switchbot', 'WARNING') as logs:
+            switchbot.KeepOn(humidifier, 50).check()
+        self.assertEqual(humidifier.commands, [('on', None, None), ('mode', 5, 50)])
+        self.assertIn('Keep-on: humidifier was OFF (last mode: Drying)', logs.output[0])
+
+    def test_on_or_drying_is_left_alone(self):
+        for humidifier in (FakeHumidifier(power='on'), FakeHumidifier(power='off', drying=True)):
+            self.assertIsNone(switchbot.KeepOn(humidifier, 50).check())
+            self.assertEqual(humidifier.commands, [])
+
+    def test_without_target_only_switches_on(self):
+        humidifier = FakeHumidifier(power='off')
+        with self.assertLogs('functions.switchbot', 'WARNING'):
+            switchbot.KeepOn(humidifier, None).check()
+        self.assertEqual(humidifier.commands, [('on', None, None)])
+
+    def test_target_parsing(self):
+        self.assertEqual([switchbot.parse_target(v) for v in ('50', ' 60 ', '', 'abc', '120', None)], [50, 60, None, None, None, None])
+
+    def test_every_reading_runs_the_check_even_if_the_reading_fails(self):
+        humidifier = FakeHumidifier(power='off')
+        recorder = switchbot.Recorder(None, 't', 's', keeper=switchbot.KeepOn(humidifier, 50))
+        with patch.object(switchbot, 'find_hub2', side_effect=switchbot.SwitchBotError('offline')), \
+             self.assertLogs('functions.switchbot', 'WARNING'):
+            recorder.tick()
+        self.assertEqual(humidifier.commands[0], ('on', None, None))
+
+
 class RouteTests(unittest.TestCase):
     def setUp(self):
         self.app = create_app({'TESTING': True, 'SECRET_KEY': 'x', 'SQLALCHEMY_DATABASE_URI': 'sqlite://',

@@ -206,12 +206,46 @@ class Humidifier:
         return body
 
 
+class KeepOn:
+    """Keep the humidifier running: if it is OFF, turn it back on in Target-humidity mode.
+
+    Runs with every Hub 2 reading (every 5 minutes). Leaves it alone while it is drying its
+    filter. Every restart is logged. Pause with HUMIDIFIER_KEEP_ON=0 in .env.
+    """
+
+    def __init__(self, humidifier, target=None):
+        self.humidifier, self.target = humidifier, target
+
+    def check(self):
+        status = self.humidifier.status(force=True)
+        if status['power'] != 'off' or status['drying']:
+            return None
+        self.humidifier.command('on')
+        action = 'turned it ON'
+        if self.target is not None:
+            time.sleep(self.humidifier.min_command_gap + 0.5)  # one command per few seconds
+            self.humidifier.command('mode', 5, self.target)
+            action += f' in Target humidity mode at {self.target} %'
+        log.warning('Keep-on: humidifier was OFF (last mode: %s); %s', status['mode_name'], action)
+        return action
+
+
+def parse_target(value):
+    """HUMIDIFIER_TARGET from .env as an int 0-100, or None."""
+    try:
+        number = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return number if 0 <= number <= 100 else None
+
+
 class Recorder:
     """Background thread in the serving process. Never raises; logs and retries."""
 
-    def __init__(self, engine, token, secret, interval=300, device_id=''):
+    def __init__(self, engine, token, secret, interval=300, device_id='', keeper=None):
         self.engine, self.token, self.secret = engine, token, secret
         self.interval, self.device_id = max(60, int(interval)), device_id
+        self.keeper = keeper  # optional KeepOn, checked with every reading
         self.device = None
         self._stop = threading.Event()
         self._lock = threading.Lock()
@@ -224,10 +258,16 @@ class Recorder:
                     self.device = find_hub2(self.token, self.secret, self.device_id)
                 record_once(self.engine, self.token, self.secret, self.device)
                 self._last_reading = time.monotonic()
-                return True
+                recorded = True
             except Exception as error:  # network, SwitchBot or database problem: try again next interval
                 log.warning('Hub 2 reading not recorded: %s', error)
-                return False
+                recorded = False
+            if self.keeper is not None:
+                try:
+                    self.keeper.check()
+                except Exception as error:
+                    log.warning('Keep-on check failed: %s', error)
+            return recorded
 
     def refresh(self, min_gap=60):
         """Refresh button: take a reading now, at most once per `min_gap` seconds."""

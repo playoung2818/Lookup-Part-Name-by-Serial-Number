@@ -103,11 +103,18 @@ def start_climate_recorder(app):
         logging.info('SwitchBot token/secret not set; Hub 2 humidity is not recorded.')
         return None
     try:  # the humidity panel must never stop the app from starting
-        from functions.switchbot import Recorder
+        from functions.switchbot import Humidifier, KeepOn, Recorder, parse_target
         with app.app_context():
             engine = db.engine
+        keeper = None
+        if app.config.get('HUMIDIFIER_KEEP_ON', True):
+            # Same Humidifier object as /api/humidifier: shared cache and command rate limit.
+            humidifier = app.extensions.setdefault('humidifier', Humidifier(
+                token, secret, app.config.get('SWITCHBOT_HUMIDIFIER_ID', '')))
+            keeper = KeepOn(humidifier, parse_target(app.config.get('HUMIDIFIER_TARGET')))
+            logging.info('Humidifier keep-on is enabled (target %s).', keeper.target)
         recorder = Recorder(engine, token, secret, app.config.get('SWITCHBOT_POLL_SECONDS', 300),
-                            app.config.get('SWITCHBOT_DEVICE_ID', '')).start()
+                            app.config.get('SWITCHBOT_DEVICE_ID', ''), keeper=keeper).start()
         app.extensions['climate_recorder'] = recorder  # used by the homepage Refresh button
         return recorder
     except Exception:
