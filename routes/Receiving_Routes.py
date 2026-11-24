@@ -1,4 +1,6 @@
 """Review a generated draft, commit explicitly, then reopen invoices for SN entry."""
+import json
+import os
 import secrets
 from datetime import date
 from io import BytesIO
@@ -88,8 +90,45 @@ def oversized_upload(error):
     return render_receiving('Upload too large: 10 MB per file, 32 MB per shipment request.', 413)
 
 
+def last_invoice_file():
+    return Path(current_app.instance_path) / 'receiving_last_invoice.json'
+
+
+def remember_invoice(invoice):
+    """The last invoice opened by anyone (search or new save); shown by default on an empty page."""
+    try:
+        path = last_invoice_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(path.name + '.tmp')
+        temporary.write_text(json.dumps({'invoice': invoice}), encoding='utf-8')
+        os.replace(temporary, path)
+    except OSError:
+        current_app.logger.warning('Could not remember last receiving invoice %s', invoice)
+
+
+def last_invoice():
+    try:
+        return str(json.loads(last_invoice_file().read_text(encoding='utf-8')).get('invoice') or '')
+    except (OSError, ValueError, AttributeError):
+        return ''
+
+
+def open_last_invoice():
+    """Nothing open in this browser: load the last searched/saved invoice (read-only search)."""
+    invoice = last_invoice()
+    if not invoice:
+        return
+    try:
+        with store().locked() as workspace:
+            if workspace.active() is None:
+                search_invoice(db.engine, workspace, invoice, '', None)
+    except (ValueError, SQLAlchemyError, OSError):  # WorkspaceConflict is a ValueError
+        current_app.logger.warning('Could not open the last receiving invoice %s', invoice)
+
+
 @receiving_bp.route('/receiving', methods=['GET'])
 def index():
+    open_last_invoice()
     return render_receiving()
 
 
@@ -185,8 +224,9 @@ def reload_invoice():
     try:
         revision = request.form.get('revision', '')
         with store().locked() as workspace:
-            search_invoice(db.engine, workspace, request.form.get('invoice_number', ''),
-                           request.form.get('workspace_id', ''), int(revision) if revision.isdigit() else None)
+            state = search_invoice(db.engine, workspace, request.form.get('invoice_number', ''),
+                                   request.form.get('workspace_id', ''), int(revision) if revision.isdigit() else None)
+        remember_invoice(state['invoice_scope'])
         return redirect(url_for('receiving.index'), code=303)
     except WorkspaceConflict as exc:
         return render_receiving(str(exc), 409)
@@ -299,6 +339,8 @@ def initialize_database():
             if state.get('pending') or any(row['db_id'] is None for row in state['rows']):
                 save_database(db.engine, state, workspace.persist)
             result = database_state(workspace, state)
+        if result and result.get('mode') == 'entry' and result.get('invoice_scope'):
+            remember_invoice(result['invoice_scope'])
         return jsonify(workspace=result)
     except WorkspaceConflict as exc:
         return jsonify(error=str(exc)), 409

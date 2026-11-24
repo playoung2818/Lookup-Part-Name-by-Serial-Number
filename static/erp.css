@@ -35,7 +35,7 @@ a { color: var(--accent); text-underline-offset: 3px; }
 .sidebar-nav a:hover { background: #f3f5f8; color: var(--ink); }
 .sidebar-nav a.active { background: #eaf2fc; color: #1857a0; font-weight: 600; }
 .sidebar-nav a.active svg { color: var(--accent); }
-.sidebar-nav .nav-borrow svg { color: #8b5cf6; }
+.sidebar-nav .nav-borrow svg { color: #e0a800; }  /* yellow */
 .sidebar-nav .nav-receiving svg { color: #d97706; }
 /* Lookup stays at the top; Warehouse actions sit at the bottom, above the footer. */
 .nav-actions-label { margin: 0; padding: 18px 18px 6px; border-top: 0; }

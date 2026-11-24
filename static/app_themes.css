@@ -70,7 +70,7 @@ html[data-rt] .sidebar-nav a { color: var(--t-ink-2); border-radius: var(--t-rad
 html[data-rt] .sidebar-nav a:hover { background: var(--t-surface-2); color: var(--t-ink); }
 html[data-rt] .sidebar-nav a.active { background: var(--t-accent-soft); color: var(--t-ink); }
 html[data-rt] .sidebar-nav a.active svg, html[data-rt] .sidebar-nav .nav-receiving svg { color: var(--t-accent); }
-html[data-rt] .sidebar-nav .nav-borrow svg { color: var(--t-muted); }
+html[data-rt] .sidebar-nav .nav-borrow svg, html[data-rt] .sidebar-nav a.active.nav-borrow svg { color: #e0a800; }  /* yellow, also when active */
 html[data-rt="console"] .sidebar-brand img { background: #fff; border-radius: 6px; padding: 6px 8px; }
 html[data-rt] .page-eyebrow { color: var(--t-muted); letter-spacing: .02em; }
 html[data-rt] .page-title { font-family: var(--t-display); color: var(--t-ink); font-weight: 600; font-size: 26px; letter-spacing: -0.03em; }

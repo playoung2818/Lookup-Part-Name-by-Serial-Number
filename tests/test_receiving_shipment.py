@@ -427,6 +427,24 @@ class ShipmentRouteTests(ShipmentTests):
         self.assertNotIn(b'<details class="serial-sequence', page.data)
         self.assertIn(b'readonly aria-label="SN for row', page.data)
 
+    def test_last_invoice_opens_by_default_in_an_empty_browser(self):
+        _, state = self.post_generate()                      # saving a draft remembers its INV#
+        invoice = state['rows'][0]['invoice_number']
+        fresh = self.app.test_client()                       # another PC / cleared cookies
+        page = fresh.get('/receiving').get_data(as_text=True)
+        self.assertIn('id="receiving-workspace"', page)
+        self.assertIn(f'INV# {invoice}', page)
+        # A browser that already has something open keeps it (no replacement).
+        before = self.client.get('/receiving/workspace').json['workspace']['id']
+        self.client.get('/receiving')
+        self.assertEqual(self.client.get('/receiving/workspace').json['workspace']['id'], before)
+
+    def test_open_by_enter_without_open_button(self):
+        page = self.client.get('/receiving').get_data(as_text=True)
+        form = page[page.index('id="invoice-search-form"'):page.index('</form>', page.index('id="invoice-search-form"'))]
+        self.assertNotIn('<button', form)                     # Enter submits the single INV# field
+        self.assertIn('name="invoice_number"', form)
+
     def test_serial_generator_available_without_invoice(self):
         page = self.client.get('/receiving')
         self.assertIn(b'Fill consecutive serials', page.data)

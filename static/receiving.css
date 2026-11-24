@@ -60,8 +60,7 @@
 .rcv-header .page-title { margin: 0; }
 .rcv-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .rcv-open { display: flex; }
-.rcv-open .form-control { width: 210px; border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.rcv-open .btn { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -1px; }
+.rcv-open .form-control { width: 210px; }
 .rcv-menu { position: relative; }
 .rcv-menu > summary { list-style: none; cursor: pointer; user-select: none; }
 .rcv-menu > summary::-webkit-details-marker { display: none; }
